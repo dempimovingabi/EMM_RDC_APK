@@ -1,7 +1,6 @@
-// sw.js
-// Service Worker — EMM RD CONGO (Version 5)
-
-const CACHE_NAME = 'emm-rdcongo-v5';
+// sw.js — Service Worker PWA EMM RD CONGO (Section 5.3 du CDC)
+const CACHE_NAME = 'emm-rdcongo-v6';
+const DYNAMIC_CACHE = 'emm-rdcongo-dyn-v6';
 const MAX_DYNAMIC_ITEMS = 80;
 
 const STATIC_ASSETS = [
@@ -10,102 +9,64 @@ const STATIC_ASSETS = [
   './offline.html',
   './manifest.json',
   './css/main.css',
-  './js/main.js',
-  './js/config/constants.js',
-  './js/config/routes.js',
-  './js/core/app.js',
-  './js/core/router.js',
-  './js/core/store.js',
-  './js/core/permissions.js',
-  './js/core/province.context.js',
-  './js/core/online-status.js',
-  './assets/icons/icon-192x192.png',
-  './assets/icons/icon-512x512.png',
-  './assets/icons/logo.png',
-  './assets/son1.mp3'
+  './js/main.js'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.allSettled(STATIC_ASSETS.map((url) => cache.add(url)))
+    )
   );
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(
-          keys
-            .filter((key) => key !== CACHE_NAME)
-            .map((key) => caches.delete(key))
-        )
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter((k) => k !== CACHE_NAME && k !== DYNAMIC_CACHE)
+          .map((k) => caches.delete(k))
       )
-      .then(() => self.clients.claim())
+    )
   );
+  self.clients.claim();
 });
 
-async function trimDynamicCache(cache) {
+async function limitCacheSize(cacheName, maxItems) {
+  const cache = await caches.open(cacheName);
   const keys = await cache.keys();
-  if (keys.length <= MAX_DYNAMIC_ITEMS) return;
-  const excess = keys.length - MAX_DYNAMIC_ITEMS;
-  for (let i = 0; i < excess; i += 1) {
-    await cache.delete(keys[i]);
+  if (keys.length > maxItems) {
+    await cache.delete(keys[0]);
+    await limitCacheSize(cacheName, maxItems);
   }
 }
 
 self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  if (request.method !== 'GET') return;
+  const req = event.request;
+  if (req.method !== 'GET') return;
 
-  const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
+  const url = new URL(req.url);
+  if (url.origin !== location.origin) return;
 
-  const isStaticAsset = STATIC_ASSETS.some((asset) =>
-    url.pathname.endsWith(asset.replace(/^\.\//, ''))
-  );
-
-  if (isStaticAsset) {
-    event.respondWith(
-      caches.match(request).then(
-        (cached) =>
-          cached ||
-          fetch(request).then((response) => {
-            if (response && response.ok) {
-              const copy = response.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-            }
-            return response;
-          })
-      )
-    );
-    return;
-  }
-
-  // Network-First avec repli sur le cache puis offline.html pour la navigation
   event.respondWith(
-    fetch(request)
-      .then((response) => {
-        if (response && response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(async (cache) => {
-            await cache.put(request, copy);
-            await trimDynamicCache(cache);
-          });
-        }
-        return response;
+    fetch(req)
+      .then((networkRes) => {
+        const clone = networkRes.clone();
+        caches.open(DYNAMIC_CACHE).then((cache) => {
+          cache.put(req, clone);
+          limitCacheSize(DYNAMIC_CACHE, MAX_DYNAMIC_ITEMS);
+        });
+        return networkRes;
       })
       .catch(async () => {
-        const cached = await caches.match(request);
+        const cached = await caches.match(req);
         if (cached) return cached;
-        if (request.mode === 'navigate') {
+        if (req.mode === 'navigate') {
           return caches.match('./offline.html');
         }
-        return new Response('Hors ligne', { status: 503, statusText: 'Offline' });
+        return new Response('', { status: 408 });
       })
   );
 });
