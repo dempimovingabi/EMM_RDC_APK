@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0a6e2c" />
+  <title>EMM RDC — Église Messianique Mondiale</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/png" href="./assets/icons/logo.png" />
+  <link rel="apple-touch-icon" href="./assets/icons/icon-192x192.png" />
+  <link rel="stylesheet" href="./css/main.css" />
+</head>
+<body>
+  <script>
+    (function () {
+      function showBootError(title, message, file, line) {
+        var box = document.getElementById('emm-boot-error');
+        if (!box) {
+          box = document.createElement('div');
+          box.id = 'emm-boot-error';
+          box.style.cssText =
+            'position:fixed;inset:0;z-index:99999;background:#ffffff;color:#991b1b;padding:18px;font-family:monospace;font-size:13px;overflow:auto;';
+          document.body.appendChild(box);
+        }
+        box.innerHTML +=
+          '<div style="margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #fecaca;">' +
+          '<strong>' + title + '</strong><br>' +
+          '<span>Message : ' + (message || 'Erreur inconnue') + '</span><br>' +
+          (file ? '<span>Fichier : ' + file + ' (ligne ' + (line || '?') + ')</span>' : '') +
+          '</div>';
+      }
+
+      window.addEventListener(
+        'error',
+        function (e) {
+          showBootError(
+            'ERREUR JAVASCRIPT / RESSOURCE',
+            e.message || 'Échec chargement script ou média',
+            e.filename || '',
+            e.lineno || '?'
+          );
+        },
+        true
+      );
+
+      window.addEventListener('unhandledrejection', function (e) {
+        var reason = e.reason;
+        var msg = reason && reason.message ? reason.message : String(reason || 'Promesse rejetée');
+        showBootError('ERREUR ASYNCHRONE', msg, '', '');
+      });
+    })();
+  </script>
+
+  <div id="offline-banner" class="offline-banner hidden" style="display:none;background:#b45309;color:#ffffff;padding:8px 12px;text-align:center;font-size:0.82rem;font-weight:700;">
+    Mode hors ligne actif — les données sont enregistrées localement et seront synchronisées dès le retour réseau.
+  </div>
+
+  <header id="app-header" class="app-header hidden" style="background:#0a6e2c;color:#ffffff;padding:10px 12px;"></header>
+
+  <main id="app-main" class="app-main">
+    <div id="container" class="app-container"></div>
+  </main>
+
+  <nav id="bottom-nav" class="bottom-nav hidden" style="position:fixed;bottom:0;left:0;right:0;background:#ffffff;border-top:1px solid #e5e7eb;z-index:900;"></nav>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

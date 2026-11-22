@@ -1,0 +1,26 @@
+{
+  "name": "EMM RD CONGO",
+  "short_name": "EMM RDC",
+  "description": "Application Web Progressive de gestion et statistiques des fréquences — Église Messianique Mondiale RDC",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a6e2c",
+  "theme_color": "#0a6e2c",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "./assets/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./assets/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
