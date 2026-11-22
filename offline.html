@@ -3,32 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0a6e2c" />
-  <title>Hors ligne — EMM RDC</title>
+  <title>Hors ligne — EMM RD CONGO</title>
   <style>
     body {
       margin: 0;
       font-family: system-ui, -apple-system, sans-serif;
-      background: #0a6e2c;
+      background: linear-gradient(160deg, #0d8a38, #0a6e2c, #043c16);
       color: #ffffff;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 24px;
+      padding: 20px;
       text-align: center;
     }
     .box {
-      max-width: 420px;
-      background: rgba(0, 0, 0, 0.22);
-      padding: 28px 22px;
-      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 400px;
     }
     button {
       margin-top: 16px;
-      padding: 10px 18px;
+      padding: 12px 20px;
       border: 0;
-      border-radius: 8px;
+      border-radius: 10px;
       background: #ffffff;
       color: #0a6e2c;
       font-weight: 700;
@@ -38,9 +38,9 @@
 </head>
 <body>
   <div class="box">
-    <h2>Connexion indisponible</h2>
-    <p>Vous êtes actuellement hors ligne. Reconnectez-vous ou rouvrez l'application EMM RDC pour travailler sur vos données locales.</p>
-    <button type="button" onclick="window.location.reload()">Réessayer</button>
+    <h2>Mode Hors Ligne — EMM RDC</h2>
+    <p>Vous n'êtes pas connecté à Internet. Revenez sur l'écran d'accueil pour accéder à vos données locales enregistrées.</p>
+    <button onclick="window.location.href='./index.html'">Recharger l'application</button>
   </div>
 </body>
 </html>
