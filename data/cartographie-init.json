@@ -1,0 +1,101 @@
+[
+  {
+    "province": "KINSHASA",
+    "entites": [
+      { "id": "e1", "type": "Centre de formation", "nom": "CF KINSHASA", "mb": 50, "sy": 100, "nv": 0, "obs": "DIM. NORMAL" },
+      { "id": "e2", "type": "Johrei Center", "nom": "JC KINSHASA 1", "mb": 60, "sy": 70, "nv": 10, "obs": "" },
+      { "id": "e3", "type": "Johrei Center", "nom": "JC KINSHASA 2", "mb": 40, "sy": 50, "nv": 2, "obs": "" },
+      { "id": "e4", "type": "Foyer de Lumière", "nom": "FL KINSHASA 1", "mb": 30, "sy": 40, "nv": 2, "obs": "" },
+      { "id": "e5", "type": "Foyer de Lumière", "nom": "FL KINSHASA 2", "mb": 24, "sy": 20, "nv": 1, "obs": "" },
+      { "id": "e6", "type": "Foyer de Lumière", "nom": "FL KINSHASA 3", "mb": 20, "sy": 13, "nv": 1, "obs": "" }
+    ]
+  },
+  {
+    "province": "KASAÏ-CENTRAL",
+    "entites": [
+      { "id": "e7", "type": "Foyer de Lumière", "nom": "FL KASAÏ-CENTRAL 1", "mb": 10, "sy": 50, "nv": 2, "obs": "" },
+      { "id": "e8", "type": "Foyer de Lumière", "nom": "FL KASAÏ-CENTRAL 2", "mb": 5, "sy": 40, "nv": 1, "obs": "" },
+      { "id": "e9", "type": "Foyer de Lumière", "nom": "FL KASAÏ-CENTRAL 3", "mb": 4, "sy": 45, "nv": 3, "obs": "" },
+      { "id": "e10", "type": "Foyer de Lumière", "nom": "FL KASAÏ-CENTRAL 4", "mb": 3, "sy": 35, "nv": 2, "obs": "" },
+      { "id": "e11", "type": "Foyer de Lumière", "nom": "FL KASAÏ-CENTRAL 5", "mb": 2, "sy": 30, "nv": 1, "obs": "" },
+      { "id": "e12", "type": "Foyer de Lumière", "nom": "FL KASAÏ-CENTRAL 6", "mb": 4, "sy": 40, "nv": 2, "obs": "" },
+      { "id": "e13", "type": "Foyer de Lumière", "nom": "FL KASAÏ-CENTRAL 7", "mb": 3, "sy": 45, "nv": 1, "obs": "" },
+      { "id": "e14", "type": "Foyer de Lumière", "nom": "FL KASAÏ-CENTRAL 8", "mb": 2, "sy": 40, "nv": 2, "obs": "" },
+      { "id": "e15", "type": "Foyer de Lumière", "nom": "FL KASAÏ-CENTRAL 9", "mb": 4, "sy": 50, "nv": 3, "obs": "" },
+      { "id": "e16", "type": "Foyer de Lumière", "nom": "FL KASAÏ-CENTRAL 10", "mb": 2, "sy": 35, "nv": 1, "obs": "" },
+      { "id": "e17", "type": "Foyer de Lumière", "nom": "FL KASAÏ-CENTRAL 11", "mb": 2, "sy": 30, "nv": 2, "obs": "" },
+      { "id": "e18", "type": "Foyer de Lumière", "nom": "FL KASAÏ-CENTRAL 12", "mb": 2, "sy": 35, "nv": 2, "obs": "" }
+    ]
+  },
+  {
+    "province": "KASAÏ",
+    "entites": [
+      { "id": "e19", "type": "Johrei Center", "nom": "JC KASAÏ 1", "mb": 8, "sy": 80, "nv": 5, "obs": "" },
+      { "id": "e20", "type": "Foyer de Lumière", "nom": "FL KASAÏ 1", "mb": 4, "sy": 60, "nv": 6, "obs": "" },
+      { "id": "e21", "type": "Foyer de Lumière", "nom": "FL KASAÏ 2", "mb": 4, "sy": 58, "nv": 5, "obs": "" }
+    ]
+  },
+  {
+    "province": "KASAÏ-ORIENTAL",
+    "entites": [
+      { "id": "e22", "type": "Johrei Center", "nom": "JC KASAÏ-ORIENTAL 1", "mb": 15, "sy": 60, "nv": 0, "obs": "" },
+      { "id": "e23", "type": "Johrei Center", "nom": "JC KASAÏ-ORIENTAL 2", "mb": 12, "sy": 40, "nv": 0, "obs": "" },
+      { "id": "e24", "type": "Foyer de Lumière", "nom": "FL KASAÏ-ORIENTAL 1", "mb": 5, "sy": 26, "nv": 0, "obs": "" }
+    ]
+  },
+  {
+    "province": "LOMAMI",
+    "entites": [
+      { "id": "e25", "type": "Foyer de Lumière", "nom": "FL LOMAMI 1", "mb": 4, "sy": 61, "nv": 1, "obs": "" }
+    ]
+  },
+  {
+    "province": "HAUT-KATANGA",
+    "entites": [
+      { "id": "e26", "type": "Foyer de Lumière", "nom": "FL HAUT-KATANGA 1", "mb": 10, "sy": 30, "nv": 0, "obs": "" },
+      { "id": "e27", "type": "Foyer de Lumière", "nom": "FL HAUT-KATANGA 2", "mb": 9, "sy": 28, "nv": 0, "obs": "" },
+      { "id": "e28", "type": "Foyer de Lumière", "nom": "FL HAUT-KATANGA 3", "mb": 8, "sy": 26, "nv": 0, "obs": "" }
+    ]
+  },
+  {
+    "province": "LUALABA",
+    "entites": [
+      { "id": "e29", "type": "Foyer de Lumière", "nom": "FL LUALABA 1", "mb": 20, "sy": 80, "nv": 3, "obs": "" },
+      { "id": "e30", "type": "Foyer de Lumière", "nom": "FL LUALABA 2", "mb": 18, "sy": 77, "nv": 3, "obs": "" },
+      { "id": "e31", "type": "Foyer de Lumière", "nom": "FL LUALABA 3", "mb": 17, "sy": 77, "nv": 2, "obs": "" }
+    ]
+  },
+  {
+    "province": "KONGO-CENTRAL",
+    "entites": [
+      { "id": "e32", "type": "Johrei Center", "nom": "JC KONGO-CENTRAL 1", "mb": 20, "sy": 40, "nv": 2, "obs": "" },
+      { "id": "e33", "type": "Foyer de Lumière", "nom": "FL KONGO-CENTRAL 1", "mb": 12, "sy": 30, "nv": 2, "obs": "" },
+      { "id": "e34", "type": "Foyer de Lumière", "nom": "FL KONGO-CENTRAL 2", "mb": 12, "sy": 28, "nv": 2, "obs": "" }
+    ]
+  },
+  {
+    "province": "KWILU",
+    "entites": [
+      { "id": "e35", "type": "Foyer de Lumière", "nom": "FL KWILU 1", "mb": 5, "sy": 40, "nv": 2, "obs": "" },
+      { "id": "e36", "type": "Foyer de Lumière", "nom": "FL KWILU 2", "mb": 4, "sy": 38, "nv": 2, "obs": "" },
+      { "id": "e37", "type": "Foyer de Lumière", "nom": "FL KWILU 3", "mb": 3, "sy": 35, "nv": 1, "obs": "" },
+      { "id": "e38", "type": "Foyer de Lumière", "nom": "FL KWILU 4", "mb": 3, "sy": 33, "nv": 2, "obs": "" },
+      { "id": "e39", "type": "Foyer de Lumière", "nom": "FL KWILU 5", "mb": 3, "sy": 32, "nv": 1, "obs": "" }
+    ]
+  },
+  {
+    "province": "À CLASSER / AUTRES PROVINCES",
+    "entites": [
+      { "id": "e40", "type": "Johrei Center", "nom": "JC À CLASSER 1", "mb": 15, "sy": 100, "nv": 5, "obs": "" },
+      { "id": "e41", "type": "Foyer de Lumière", "nom": "FL À CLASSER 1", "mb": 5, "sy": 50, "nv": 4, "obs": "" },
+      { "id": "e42", "type": "Foyer de Lumière", "nom": "FL À CLASSER 2", "mb": 5, "sy": 50, "nv": 4, "obs": "" },
+      { "id": "e43", "type": "Foyer de Lumière", "nom": "FL À CLASSER 3", "mb": 5, "sy": 45, "nv": 3, "obs": "" },
+      { "id": "e44", "type": "Foyer de Lumière", "nom": "FL À CLASSER 4", "mb": 4, "sy": 45, "nv": 3, "obs": "" },
+      { "id": "e45", "type": "Foyer de Lumière", "nom": "FL À CLASSER 5", "mb": 3, "sy": 42, "nv": 3, "obs": "" },
+      { "id": "e46", "type": "Foyer de Lumière", "nom": "FL À CLASSER 6", "mb": 3, "sy": 40, "nv": 3, "obs": "" },
+      { "id": "e47", "type": "Foyer de Lumière", "nom": "FL À CLASSER 7", "mb": 3, "sy": 39, "nv": 3, "obs": "" },
+      { "id": "e48", "type": "Foyer de Lumière", "nom": "FL À CLASSER 8", "mb": 2, "sy": 30, "nv": 3, "obs": "" },
+      { "id": "e49", "type": "Foyer de Lumière", "nom": "FL À CLASSER 9", "mb": 2, "sy": 28, "nv": 2, "obs": "" }
+    ]
+  }
+]
