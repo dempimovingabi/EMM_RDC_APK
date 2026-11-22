@@ -2,18 +2,20 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
   <meta name="theme-color" content="#0a6e2c" />
-  <title>EMM RDC — Église Messianique Mondiale</title>
+  <title>EMM RD CONGO — Église Messianique Mondiale</title>
   <link rel="manifest" href="./manifest.json" />
-  <link rel="icon" type="image/png" href="./assets/icons/logo.png" />
-  <link rel="apple-touch-icon" href="./assets/icons/icon-192x192.png" />
   <link rel="stylesheet" href="./css/main.css" />
 </head>
 <body>
+  <!-- Capteur de diagnostic au démarrage -->
   <script>
     (function () {
-      function showBootError(title, message, file, line) {
+      function showBootError(title, message, file, line, targetUrl) {
+        if (targetUrl && /\.(png|jpg|jpeg|svg|mp3|ico)(\?.*)?$/i.test(targetUrl)) {
+          return; // Ne bloque pas l'app si une image/audio secondaire est absente
+        }
         var box = document.getElementById('emm-boot-error');
         if (!box) {
           box = document.createElement('div');
@@ -26,42 +28,58 @@
           '<div style="margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #fecaca;">' +
           '<strong>' + title + '</strong><br>' +
           '<span>Message : ' + (message || 'Erreur inconnue') + '</span><br>' +
+          (targetUrl ? '<span>Ressource : <strong>' + targetUrl + '</strong></span><br>' : '') +
           (file ? '<span>Fichier : ' + file + ' (ligne ' + (line || '?') + ')</span>' : '') +
           '</div>';
       }
 
-      window.addEventListener(
-        'error',
-        function (e) {
-          showBootError(
-            'ERREUR JAVASCRIPT / RESSOURCE',
-            e.message || 'Échec chargement script ou média',
-            e.filename || '',
-            e.lineno || '?'
-          );
-        },
-        true
-      );
+      window.addEventListener('error', function (e) {
+        var target = e.target;
+        var url = target && target !== window ? (target.currentSrc || target.src || target.href || '') : '';
+        showBootError('ERREUR SCRIPT / RESSOURCE', e.message || 'Échec de chargement', e.filename || '', e.lineno || '?', url);
+      }, true);
 
       window.addEventListener('unhandledrejection', function (e) {
-        var reason = e.reason;
-        var msg = reason && reason.message ? reason.message : String(reason || 'Promesse rejetée');
-        showBootError('ERREUR ASYNCHRONE', msg, '', '');
+        var r = e.reason;
+        showBootError('ERREUR ASYNCHRONE', r && r.message ? r.message : String(r || 'Erreur'), '', '', '');
       });
     })();
   </script>
 
-  <div id="offline-banner" class="offline-banner hidden" style="display:none;background:#b45309;color:#ffffff;padding:8px 12px;text-align:center;font-size:0.82rem;font-weight:700;">
-    Mode hors ligne actif — les données sont enregistrées localement et seront synchronisées dès le retour réseau.
+  <!-- Splash Screen (Section 2.1 du CDC) -->
+  <div id="splash-screen" class="splash-screen">
+    <div class="splash-logo-wrap">
+      <img
+        src="./assets/icons/logo.png"
+        alt="EMM RDC"
+        class="splash-logo"
+        onerror="this.style.display='none';document.getElementById('splash-fallback-emblem').style.display='flex';"
+      />
+      <div id="splash-fallback-emblem" class="splash-fallback-emblem" style="display:none;">EMM</div>
+    </div>
+    <h1 class="splash-title">ÉGLISE MESSIANIQUE MONDIALE</h1>
+    <p class="splash-subtitle">République Démocratique du Congo • EMM RDC</p>
   </div>
 
-  <header id="app-header" class="app-header hidden" style="background:#0a6e2c;color:#ffffff;padding:10px 12px;"></header>
+  <!-- Bandeau Hors Ligne -->
+  <div id="offline-banner" class="offline-banner hidden">
+    Mode hors ligne actif — enregistrement local automatique (synchronisation dès le retour réseau).
+  </div>
 
+  <!-- En-tête fixe (HeaderView) -->
+  <header id="app-header" class="app-header hidden"></header>
+
+  <!-- Conteneur Principal SPA -->
   <main id="app-main" class="app-main">
     <div id="container" class="app-container"></div>
   </main>
 
-  <nav id="bottom-nav" class="bottom-nav hidden" style="position:fixed;bottom:0;left:0;right:0;background:#ffffff;border-top:1px solid #e5e7eb;z-index:900;"></nav>
+  <!-- Barre de Navigation Inférieure (BottomNav) -->
+  <nav id="bottom-nav" class="bottom-nav hidden"></nav>
+
+  <!-- Conteneur Global de Modales & Toasts -->
+  <div id="modal-root"></div>
+  <div id="toast-root" class="toast-container"></div>
 
   <script type="module" src="./js/main.js"></script>
 </body>
