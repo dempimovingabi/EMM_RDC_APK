@@ -1,7 +1,7 @@
 {
-  "name": "EMM RD CONGO",
+  "name": "EMM RD CONGO — Gestion Ecclésiastique",
   "short_name": "EMM RDC",
-  "description": "Application Web Progressive de gestion et statistiques des fréquences — Église Messianique Mondiale RDC",
+  "description": "Application Web Progressive de gestion ecclésiastique, financière, patrimoniale et statistique de l'Église Messianique Mondiale en RDC.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
