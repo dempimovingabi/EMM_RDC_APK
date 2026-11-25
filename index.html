@@ -9,13 +9,9 @@
   <link rel="stylesheet" href="./css/main.css" />
 </head>
 <body>
-  <!-- Capteur de diagnostic au démarrage -->
   <script>
     (function () {
       function showBootError(title, message, file, line, targetUrl) {
-        if (targetUrl && /\.(png|jpg|jpeg|svg|mp3|ico)(\?.*)?$/i.test(targetUrl)) {
-          return; // Ne bloque pas l'app si une image/audio secondaire est absente
-        }
         var box = document.getElementById('emm-boot-error');
         if (!box) {
           box = document.createElement('div');
@@ -27,17 +23,27 @@
         box.innerHTML +=
           '<div style="margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #fecaca;">' +
           '<strong>' + title + '</strong><br>' +
-          '<span>Message : ' + (message || 'Erreur inconnue') + '</span><br>' +
+          '<span>Message : ' + (message || 'Échec de chargement') + '</span><br>' +
           (targetUrl ? '<span>Ressource : <strong>' + targetUrl + '</strong></span><br>' : '') +
           (file ? '<span>Fichier : ' + file + ' (ligne ' + (line || '?') + ')</span>' : '') +
           '</div>';
       }
 
-      window.addEventListener('error', function (e) {
-        var target = e.target;
-        var url = target && target !== window ? (target.currentSrc || target.src || target.href || '') : '';
-        showBootError('ERREUR SCRIPT / RESSOURCE', e.message || 'Échec de chargement', e.filename || '', e.lineno || '?', url);
-      }, true);
+      window.addEventListener(
+        'error',
+        function (e) {
+          var target = e.target;
+          var url = target && target !== window ? (target.currentSrc || target.src || target.href || '') : '';
+          showBootError(
+            'ERREUR SCRIPT / RESSOURCE',
+            e.message || 'Échec de chargement',
+            e.filename || '',
+            e.lineno || '?',
+            url
+          );
+        },
+        true
+      );
 
       window.addEventListener('unhandledrejection', function (e) {
         var r = e.reason;
@@ -46,7 +52,6 @@
     })();
   </script>
 
-  <!-- Splash Screen (Section 2.1 du CDC) -->
   <div id="splash-screen" class="splash-screen">
     <div class="splash-logo-wrap">
       <img
@@ -61,23 +66,18 @@
     <p class="splash-subtitle">République Démocratique du Congo • EMM RDC</p>
   </div>
 
-  <!-- Bandeau Hors Ligne -->
   <div id="offline-banner" class="offline-banner hidden">
     Mode hors ligne actif — enregistrement local automatique (synchronisation dès le retour réseau).
   </div>
 
-  <!-- En-tête fixe (HeaderView) -->
   <header id="app-header" class="app-header hidden"></header>
 
-  <!-- Conteneur Principal SPA -->
   <main id="app-main" class="app-main">
     <div id="container" class="app-container"></div>
   </main>
 
-  <!-- Barre de Navigation Inférieure (BottomNav) -->
   <nav id="bottom-nav" class="bottom-nav hidden"></nav>
 
-  <!-- Conteneur Global de Modales & Toasts -->
   <div id="modal-root"></div>
   <div id="toast-root" class="toast-container"></div>
 
