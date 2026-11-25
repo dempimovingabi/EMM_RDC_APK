@@ -17,15 +17,15 @@
           box = document.createElement('div');
           box.id = 'emm-boot-error';
           box.style.cssText =
-            'position:fixed;inset:0;z-index:99999;background:#ffffff;color:#991b1b;padding:18px;font-family:monospace;font-size:13px;overflow:auto;';
+            'position:fixed;inset:0;z-index:99999;background:#ffffff;color:#991b1b;padding:18px;font-family:monospace;font-size:12px;overflow:auto;word-break:break-all;white-space:pre-wrap;';
           document.body.appendChild(box);
         }
         box.innerHTML +=
           '<div style="margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #fecaca;">' +
-          '<strong>' + title + '</strong><br>' +
-          '<span>Message : ' + (message || 'Échec de chargement') + '</span><br>' +
-          (targetUrl ? '<span>Ressource : <strong>' + targetUrl + '</strong></span><br>' : '') +
-          (file ? '<span>Fichier : ' + file + ' (ligne ' + (line || '?') + ')</span>' : '') +
+          '<strong>' + title + '</strong>\n' +
+          'Message : ' + (message || 'Échec de chargement') + '\n' +
+          (targetUrl ? 'Ressource complète : ' + targetUrl + '\n' : '') +
+          (file ? 'Fichier : ' + file + ' (ligne ' + (line || '?') + ')\n' : '') +
           '</div>';
       }
 
@@ -33,7 +33,10 @@
         'error',
         function (e) {
           var target = e.target;
-          var url = target && target !== window ? (target.currentSrc || target.src || target.href || '') : '';
+          var url = '';
+          if (target && target !== window) {
+            url = target.currentSrc || target.src || target.href || '';
+          }
           showBootError(
             'ERREUR SCRIPT / RESSOURCE',
             e.message || 'Échec de chargement',
