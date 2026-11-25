@@ -12,6 +12,9 @@
   <script>
     (function () {
       function showBootError(title, message, file, line, targetUrl) {
+        if (targetUrl && targetUrl.tagName === 'IMG') {
+          return;
+        }
         var box = document.getElementById('emm-boot-error');
         if (!box) {
           box = document.createElement('div');
@@ -20,11 +23,12 @@
             'position:fixed;inset:0;z-index:99999;background:#ffffff;color:#991b1b;padding:18px;font-family:monospace;font-size:12px;overflow:auto;word-break:break-all;white-space:pre-wrap;';
           document.body.appendChild(box);
         }
+        var url = targetUrl && targetUrl !== window ? (targetUrl.currentSrc || targetUrl.src || targetUrl.href || '') : '';
         box.innerHTML +=
           '<div style="margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #fecaca;">' +
           '<strong>' + title + '</strong>\n' +
           'Message : ' + (message || 'Échec de chargement') + '\n' +
-          (targetUrl ? 'Ressource complète : ' + targetUrl + '\n' : '') +
+          (url ? 'Ressource complète : ' + url + '\n' : '') +
           (file ? 'Fichier : ' + file + ' (ligne ' + (line || '?') + ')\n' : '') +
           '</div>';
       }
@@ -33,16 +37,15 @@
         'error',
         function (e) {
           var target = e.target;
-          var url = '';
-          if (target && target !== window) {
-            url = target.currentSrc || target.src || target.href || '';
+          if (target && target.tagName === 'IMG') {
+            return;
           }
           showBootError(
             'ERREUR SCRIPT / RESSOURCE',
             e.message || 'Échec de chargement',
             e.filename || '',
             e.lineno || '?',
-            url
+            target
           );
         },
         true
@@ -50,7 +53,7 @@
 
       window.addEventListener('unhandledrejection', function (e) {
         var r = e.reason;
-        showBootError('ERREUR ASYNCHRONE', r && r.message ? r.message : String(r || 'Erreur'), '', '', '');
+        showBootError('ERREUR ASYNCHRONE', r && r.message ? r.message : String(r || 'Erreur'), '', '', null);
       });
     })();
   </script>
@@ -58,7 +61,7 @@
   <div id="splash-screen" class="splash-screen">
     <div class="splash-logo-wrap">
       <img
-        src="./assets/icons/logo.png"
+        src="./assets/icons/logo-emm.png"
         alt="EMM RDC"
         class="splash-logo"
         onerror="this.style.display='none';document.getElementById('splash-fallback-emblem').style.display='flex';"
