@@ -1,11 +1,11 @@
 // js/main.js
 // Point d'entrée principal ES6+ — EMM RD CONGO
 
-import { initApp } from './core/app.js';
 import { router } from './core/router.js';
 import { store } from './core/store.js';
 import { renderLoginView } from './modules/auth/login.view.js';
 import { initAuthListener, logoutUser } from './modules/auth/auth.controller.js';
+import { initApp } from './core/app.js';
 import { initHeader } from './ui/header.js';
 import { initBottomNav } from './ui/bottom-nav.js';
 import { syncService } from './services/sync.service.js';
@@ -66,12 +66,11 @@ async function bootstrap() {
   initBottomNav();
   initOfflineBanner();
 
-  // Ne pas bloquer le démarrage si l'écouteur auth prend du temps sur réseau lent
   Promise.resolve(initAuthListener()).catch((err) => {
     console.warn('initAuthListener :', err);
   });
 
-  await initApp(1500);
+  await initApp(1200);
 }
 
 if (document.readyState === 'loading') {
@@ -79,4 +78,3 @@ if (document.readyState === 'loading') {
 } else {
   bootstrap();
 }
-
