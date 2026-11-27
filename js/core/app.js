@@ -1,54 +1,43 @@
 // js/core/app.js
-// Cycle de vie applicatif et Splash Screen — EMM RD CONGO
+// Cycle de vie applicatif, Splash Screen & démarrage SPA — EMM RD CONGO
 
-import { APP_CONFIG } from '../config/constants.js';
-import { DEFAULT_AUTHENTICATED_ROUTE, DEFAULT_GUEST_ROUTE } from '../config/routes.js';
 import { store } from './store.js';
 import { router } from './router.js';
-import { initOnlineStatusWatcher } from './online-status.js';
+import { DEFAULT_GUEST_ROUTE, DEFAULT_AUTHENTICATED_ROUTE } from '../config/routes.js';
 
-export function applyTheme(darkMode) {
-  document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
-  document.body.classList.toggle('dark-mode', Boolean(darkMode));
-}
-
-export function hideSplashScreen() {
+function hideSplashScreen() {
   const splash = document.getElementById('splash-screen');
-  if (!splash) {
-    store.setState({ splashDone: true });
-    return;
-  }
-
-  splash.classList.add('splash-hide');
+  if (!splash) return;
+  splash.style.opacity = '0';
   setTimeout(() => {
+    splash.classList.add('hidden');
     splash.style.display = 'none';
-    store.setState({ splashDone: true });
   }, 350);
 }
 
-export async function initApp() {
-  const startTime = Date.now();
-  initOnlineStatusWatcher();
-
-  const initialState = store.getState();
-  applyTheme(initialState.darkMode);
-
-  store.subscribe((state, prevState) => {
-    if (state.darkMode !== prevState.darkMode) {
-      applyTheme(state.darkMode);
-    }
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch((err) => {
+      console.warn('Enregistrement Service Worker ignoré :', err);
+    });
   });
+}
 
-  window.dispatchEvent(new CustomEvent('emm:app-ready', { detail: { store } }));
+export async function initApp(splashDurationMs = 2500) {
+  registerServiceWorker();
 
-  const elapsed = Date.now() - startTime;
-  const minDuration = APP_CONFIG.splashMinDurationMs || 3800;
-  const remaining = Math.max(0, minDuration - elapsed);
+  const minWait = new Promise((resolve) => setTimeout(resolve, splashDurationMs));
 
-  setTimeout(() => {
+  try {
+    await minWait;
+    const { isAuthenticated } = store.getState();
+    const targetRoute = isAuthenticated ? DEFAULT_AUTHENTICATED_ROUTE : DEFAULT_GUEST_ROUTE;
+    await router.navigate(targetRoute);
+  } catch (err) {
+    console.error('Erreur initApp :', err);
+    await router.navigate(DEFAULT_GUEST_ROUTE).catch(() => {});
+  } finally {
     hideSplashScreen();
-    const currentUser = store.getState().user;
-    router.navigate(currentUser ? DEFAULT_AUTHENTICATED_ROUTE : DEFAULT_GUEST_ROUTE);
-    store.setState({ initialized: true });
-  }, remaining);
+  }
 }
