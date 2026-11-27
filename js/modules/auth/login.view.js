@@ -12,7 +12,12 @@ export async function renderLoginView(container) {
     <section class="login-screen">
       <div class="login-card">
         <div class="login-header">
-          <img src="./assets/icons/logo.png" alt="Logo EMM-RDC" class="login-logo" />
+          <img
+            src="./assets/icons/logo-emm.png"
+            alt="Logo EMM-RDC"
+            class="login-logo"
+            onerror="this.style.display='none';"
+          />
           <h2>${APP_CONFIG.churchName}</h2>
           <p class="login-subtitle">${APP_CONFIG.shortName} — Connexion</p>
         </div>
