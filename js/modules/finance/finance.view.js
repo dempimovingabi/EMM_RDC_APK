@@ -17,6 +17,14 @@ export const MOTIFS_VERSEMENT = [
   'Mitamaya'
 ];
 
+export const TYPES_ENTITE = [
+  'Centre de Formation',
+  'Johrei Center',
+  'Unité religieuse',
+  'Foyer de lumière',
+  'Noyau de salut'
+];
+
 function toUsd(montant, devise, taux) {
   const val = Number(montant) || 0;
   if (devise === 'FC') {
@@ -31,6 +39,13 @@ function formatMoneyUsd(val) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })} $`;
+}
+
+function formatEntiteLabel(typeEntite, nomEntite) {
+  const typeClean = String(typeEntite || '').trim();
+  const nomClean = String(nomEntite || '').trim();
+  if (typeClean && nomClean) return `${typeClean} — ${nomClean}`;
+  return typeClean || nomClean || '';
 }
 
 export async function renderFinanceView(container) {
@@ -55,13 +70,13 @@ export async function renderFinanceView(container) {
         (v.candidatId && candidatIds.has(v.candidatId))
     );
 
-    // Calcul du total versé en USD par candidat
     const paidByCandidat = {};
     versements.forEach((v) => {
       if (!v.candidatId) return;
-      const usd = v.montantUsd !== undefined && v.montantUsd !== null
-        ? Number(v.montantUsd) || 0
-        : toUsd(v.montant, v.devise, v.taux);
+      const usd =
+        v.montantUsd !== undefined && v.montantUsd !== null
+          ? Number(v.montantUsd) || 0
+          : toUsd(v.montant, v.devise, v.taux);
       paidByCandidat[v.candidatId] = (paidByCandidat[v.candidatId] || 0) + usd;
     });
 
@@ -73,6 +88,10 @@ export async function renderFinanceView(container) {
       (m) => `<option value="${escapeHTML(m)}">${escapeHTML(m)}</option>`
     ).join('');
 
+    const typeEntiteOptionsHtml = TYPES_ENTITE.map(
+      (t) => `<option value="${escapeHTML(t)}">${escapeHTML(t)}</option>`
+    ).join('');
+
     container.innerHTML = `
       <section class="module-page finance-page">
         <div class="page-header">
@@ -81,7 +100,7 @@ export async function renderFinanceView(container) {
 
         <div class="card" style="padding:10px 14px;font-size:0.84rem;color:var(--text-muted);">
           Province active : <strong style="color:var(--green-main);">${escapeHTML(province)}</strong> •
-          Catégories / Motifs : <strong>Initiation, Réinitiation, Shoku, Kannon, Photo sacrée, Goshintai familial, Mitamaya</strong>
+          Entités : <strong>Centre de Formation, Johrei Center, Unité religieuse, Foyer de lumière, Noyau de salut</strong>
         </div>
 
         <div class="kpi-grid">
@@ -130,15 +149,36 @@ export async function renderFinanceView(container) {
     if (!host) return;
 
     if (activeTab === 'candidats') {
-      await renderCandidatsTab(host, province, candidats, paidByCandidat, motifOptionsHtml);
+      await renderCandidatsTab(
+        host,
+        province,
+        candidats,
+        paidByCandidat,
+        motifOptionsHtml,
+        typeEntiteOptionsHtml
+      );
     } else if (activeTab === 'versements') {
-      await renderVersementsTab(host, province, candidats, versements, motifOptionsHtml);
+      await renderVersementsTab(
+        host,
+        province,
+        candidats,
+        versements,
+        motifOptionsHtml,
+        typeEntiteOptionsHtml
+      );
     } else if (activeTab === 'releves') {
-      renderRelevesTab(host, province, candidats, versements, paidByCandidat);
+      renderRelevesTab(host, province, candidats, paidByCandidat);
     }
   };
 
-  async function renderCandidatsTab(host, province, candidats, paidByCandidat, motifOptionsHtml) {
+  async function renderCandidatsTab(
+    host,
+    province,
+    candidats,
+    paidByCandidat,
+    motifOptionsHtml,
+    typeEntiteOptionsHtml
+  ) {
     const filtered =
       filterMotif === 'ALL'
         ? candidats
@@ -166,10 +206,17 @@ export async function renderFinanceView(container) {
             </div>
           </div>
 
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;">
             <div class="form-group">
-              <label for="cand-entite">Entité / Paroisse / Centre</label>
-              <input id="cand-entite" type="text" placeholder="Ex: Kananga Centre" />
+              <label for="cand-type-entite">Type d'entité</label>
+              <select id="cand-type-entite" required>
+                <option value="">-- Choisir le type d'entité --</option>
+                ${typeEntiteOptionsHtml}
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="cand-entite">Nom de l'entité</label>
+              <input id="cand-entite" type="text" required placeholder="Ex: Kananga I" />
             </div>
             <div class="form-group">
               <label for="cand-telephone">Téléphone (optionnel)</label>
@@ -196,7 +243,7 @@ export async function renderFinanceView(container) {
           <table>
             <thead>
               <tr>
-                <th>Candidat</th>
+                <th>Candidat & Entité</th>
                 <th>Motif</th>
                 <th>Prévu ($)</th>
                 <th>Versé ($)</th>
@@ -213,11 +260,12 @@ export async function renderFinanceView(container) {
                         const prevu = Number(c.montantPrevuUsd) || 0;
                         const verse = paidByCandidat[c.id] || 0;
                         const reste = Math.max(0, prevu - verse);
+                        const entiteText = formatEntiteLabel(c.typeEntite, c.entite);
                         return `
                         <tr>
                           <td>
                             <strong>${escapeHTML(c.nom || '')}</strong>
-                            ${c.entite ? `<br><span style="font-size:0.75rem;color:var(--text-muted);">${escapeHTML(c.entite)}</span>` : ''}
+                            ${entiteText ? `<br><span style="font-size:0.75rem;color:var(--text-muted);">Entité : ${escapeHTML(entiteText)}</span>` : ''}
                           </td>
                           <td><span class="badge">${escapeHTML(c.motif || '')}</span></td>
                           <td>${formatMoneyUsd(prevu)}</td>
@@ -248,11 +296,12 @@ export async function renderFinanceView(container) {
       const nom = f['cand-nom'].value.trim();
       const motif = f['cand-motif'].value;
       const montantPrevuUsd = Number(f['cand-montant-prevu'].value) || 0;
+      const typeEntite = f['cand-type-entite'].value;
       const entite = f['cand-entite'].value.trim();
       const telephone = f['cand-telephone'].value.trim();
 
-      if (!nom || !motif) {
-        showToast('Veuillez renseigner le nom et la catégorie/motif.', 'error');
+      if (!nom || !motif || !typeEntite || !entite) {
+        showToast('Veuillez renseigner le nom, le motif et l’entité.', 'error');
         return;
       }
 
@@ -260,6 +309,7 @@ export async function renderFinanceView(container) {
         nom,
         motif,
         montantPrevuUsd,
+        typeEntite,
         entite,
         telephone,
         province,
@@ -280,14 +330,25 @@ export async function renderFinanceView(container) {
     });
   }
 
-  async function renderVersementsTab(host, province, candidats, versements, motifOptionsHtml) {
+  async function renderVersementsTab(
+    host,
+    province,
+    candidats,
+    versements,
+    motifOptionsHtml,
+    typeEntiteOptionsHtml
+  ) {
     const candidatOptions = candidats
-      .map(
-        (c) =>
-          `<option value="${escapeHTML(c.id)}" data-motif="${escapeHTML(c.motif || '')}">${escapeHTML(
-            c.nom || ''
-          )} (${escapeHTML(c.motif || '')})</option>`
-      )
+      .map((c) => {
+        const entiteText = formatEntiteLabel(c.typeEntite, c.entite);
+        return `<option value="${escapeHTML(c.id)}" data-motif="${escapeHTML(
+          c.motif || ''
+        )}" data-type-entite="${escapeHTML(c.typeEntite || '')}" data-entite="${escapeHTML(
+          c.entite || ''
+        )}">${escapeHTML(c.nom || '')} (${escapeHTML(c.motif || '')}${
+          entiteText ? ` • ${escapeHTML(entiteText)}` : ''
+        })</option>`;
+      })
       .join('');
 
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -314,6 +375,20 @@ export async function renderFinanceView(container) {
             <div class="form-group">
               <label for="vers-date">Date du versement</label>
               <input id="vers-date" type="date" value="${todayStr}" required />
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;">
+            <div class="form-group">
+              <label for="vers-type-entite">Type d'entité</label>
+              <select id="vers-type-entite">
+                <option value="">-- Choisir le type d'entité --</option>
+                ${typeEntiteOptionsHtml}
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="vers-entite">Nom de l'entité</label>
+              <input id="vers-entite" type="text" placeholder="Ex: Kananga I" />
             </div>
           </div>
 
@@ -351,7 +426,7 @@ export async function renderFinanceView(container) {
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Candidat</th>
+                <th>Candidat & Entité</th>
                 <th>Motif</th>
                 <th>Montant saisi</th>
                 <th>Équivalent USD</th>
@@ -369,10 +444,17 @@ export async function renderFinanceView(container) {
                           v.montantUsd !== undefined && v.montantUsd !== null
                             ? Number(v.montantUsd) || 0
                             : toUsd(v.montant, v.devise, v.taux);
+                        const entiteText = formatEntiteLabel(
+                          v.typeEntite || cand?.typeEntite,
+                          v.entite || cand?.entite
+                        );
                         return `
                         <tr>
                           <td>${escapeHTML(v.date || '')}</td>
-                          <td><strong>${escapeHTML(cand?.nom || v.candidatNom || 'Candidat')}</strong></td>
+                          <td>
+                            <strong>${escapeHTML(cand?.nom || v.candidatNom || 'Candidat')}</strong>
+                            ${entiteText ? `<br><span style="font-size:0.75rem;color:var(--text-muted);">Entité : ${escapeHTML(entiteText)}</span>` : ''}
+                          </td>
                           <td><span class="badge">${escapeHTML(v.motif || cand?.motif || '')}</span></td>
                           <td>${formatNumberFr(v.montant)} ${escapeHTML(v.devise || 'USD')}</td>
                           <td style="font-weight:700;color:#0a6e2c;">${formatMoneyUsd(usdVal)}</td>
@@ -390,14 +472,24 @@ export async function renderFinanceView(container) {
       </div>
     `;
 
-    // Synchroniser automatiquement le motif du candidat sélectionné
     const selCand = host.querySelector('#vers-candidat');
     const selMotif = host.querySelector('#vers-motif');
+    const selTypeEntite = host.querySelector('#vers-type-entite');
+    const inputEntite = host.querySelector('#vers-entite');
+
     selCand?.addEventListener('change', () => {
       const opt = selCand.options[selCand.selectedIndex];
       const m = opt?.dataset?.motif;
+      const tEnt = opt?.dataset?.typeEntite;
+      const nEnt = opt?.dataset?.entite;
       if (m && MOTIFS_VERSEMENT.includes(m) && selMotif) {
         selMotif.value = m;
+      }
+      if (tEnt && TYPES_ENTITE.includes(tEnt) && selTypeEntite) {
+        selTypeEntite.value = tEnt;
+      }
+      if (nEnt && inputEntite) {
+        inputEntite.value = nEnt;
       }
     });
 
@@ -407,6 +499,8 @@ export async function renderFinanceView(container) {
       const candidatId = f['vers-candidat'].value;
       const motif = f['vers-motif'].value;
       const date = f['vers-date'].value;
+      const typeEntite = f['vers-type-entite'].value;
+      const entite = f['vers-entite'].value.trim();
       const montant = Number(f['vers-montant'].value) || 0;
       const devise = f['vers-devise'].value;
       const taux = Number(f['vers-taux'].value) || 2800;
@@ -418,6 +512,8 @@ export async function renderFinanceView(container) {
       }
 
       const candObj = candidats.find((c) => c.id === candidatId);
+      const finalTypeEntite = typeEntite || candObj?.typeEntite || '';
+      const finalEntite = entite || candObj?.entite || '';
       const montantUsd = toUsd(montant, devise, taux);
 
       await setDocument(COLLECTIONS.VERSEMENTS, null, {
@@ -425,6 +521,8 @@ export async function renderFinanceView(container) {
         candidatNom: candObj?.nom || '',
         motif,
         date,
+        typeEntite: finalTypeEntite,
+        entite: finalEntite,
         montant,
         devise,
         taux,
@@ -448,8 +546,7 @@ export async function renderFinanceView(container) {
     });
   }
 
-  function renderRelevesTab(host, province, candidats, versements, paidByCandidat) {
-    // Synthèse par motif (les 7 catégories du CDC)
+  function renderRelevesTab(host, province, candidats, paidByCandidat) {
     const statsByMotif = MOTIFS_VERSEMENT.map((motif) => {
       const candsMotif = candidats.filter((c) => c.motif === motif);
       const prevu = candsMotif.reduce((s, c) => s + (Number(c.montantPrevuUsd) || 0), 0);
@@ -507,6 +604,7 @@ export async function renderFinanceView(container) {
             <thead>
               <tr>
                 <th>Candidat</th>
+                <th>Entité</th>
                 <th>Motif</th>
                 <th>Prévu ($)</th>
                 <th>Versé ($)</th>
@@ -516,15 +614,17 @@ export async function renderFinanceView(container) {
             <tbody>
               ${
                 candidats.length === 0
-                  ? `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Aucune donnée à afficher.</td></tr>`
+                  ? `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Aucune donnée à afficher.</td></tr>`
                   : candidats
                       .map((c) => {
                         const prevu = Number(c.montantPrevuUsd) || 0;
                         const verse = paidByCandidat[c.id] || 0;
                         const reste = Math.max(0, prevu - verse);
+                        const entiteText = formatEntiteLabel(c.typeEntite, c.entite);
                         return `
                         <tr>
                           <td><strong>${escapeHTML(c.nom || '')}</strong></td>
+                          <td>${escapeHTML(entiteText || '—')}</td>
                           <td>${escapeHTML(c.motif || '')}</td>
                           <td>${formatMoneyUsd(prevu)}</td>
                           <td>${formatMoneyUsd(verse)}</td>
@@ -541,7 +641,16 @@ export async function renderFinanceView(container) {
     `;
 
     host.querySelector('#btn-export-finance-csv')?.addEventListener('click', () => {
-      const headers = ['Candidat', 'Motif', 'Province', 'Montant Prevu USD', 'Montant Verse USD', 'Reste a Payer USD'];
+      const headers = [
+        'Candidat',
+        'Type Entite',
+        'Nom Entite',
+        'Motif',
+        'Province',
+        'Montant Prevu USD',
+        'Montant Verse USD',
+        'Reste a Payer USD'
+      ];
       const lines = [headers.join(';')];
       candidats.forEach((c) => {
         const prevu = Number(c.montantPrevuUsd) || 0;
@@ -550,6 +659,8 @@ export async function renderFinanceView(container) {
         lines.push(
           [
             `"${String(c.nom || '').replace(/"/g, '""')}"`,
+            `"${String(c.typeEntite || '').replace(/"/g, '""')}"`,
+            `"${String(c.entite || '').replace(/"/g, '""')}"`,
             `"${String(c.motif || '').replace(/"/g, '""')}"`,
             `"${String(province).replace(/"/g, '""')}"`,
             prevu.toFixed(2),
