@@ -1,4 +1,5 @@
-// js/main.js — Chargement résilient sans blocage d'importation — EMM RD CONGO
+// js/main.js
+// Point d'entrée principal ES6+ — EMM RD CONGO
 
 async function safeImport(path) {
   try {
@@ -63,7 +64,8 @@ async function bootstrap() {
     ['depouillement', './modules/depouillement/depouillement.view.js', 'renderDepouillementView'],
     ['patrimoine', './modules/patrimoine/patrimoine.view.js', 'renderPatrimoineView'],
     ['archives', './modules/archives/archives.view.js', 'renderArchivesView'],
-    ['administration', './modules/administration/administration.view.js', 'renderAdministrationView']
+    ['administration', './modules/administration/administration.view.js', 'renderAdministrationView'],
+    ['tutoriels', './modules/tutoriels/tutoriels.view.js', 'renderTutorielsView']
   ];
 
   for (const [routeName, modPath, exportName] of optionalRoutes) {
@@ -79,7 +81,7 @@ async function bootstrap() {
       <section class="module-page">
         <div class="card">
           <h2>${route.title}</h2>
-          <p>Province active : <strong>${activeProvince || 'KINSHASA'}</strong></p>
+          <p>Province active : <strong>${activeProvince || 'KASAÏ-CENTRAL'}</strong></p>
           <p>Module prêt dans l'architecture EMM RD CONGO.</p>
         </div>
       </section>
