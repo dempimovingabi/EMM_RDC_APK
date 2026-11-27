@@ -1,107 +1,195 @@
 // js/modules/finance/finance.view.js
-// Module Finance (Candidats, Versements USD/FC & Relevés) — EMM RD CONGO[span_6](start_span)[span_6](end_span)
+// Module Finance : SUIVI DE VERSEMENT (Candidats Membres) — EMM RD CONGO
 
-import { COLLECTIONS, FINANCE_MOTIFS, FINANCE_CURRENCIES } from '../../config/constants.js';
-import { listDocuments, setDocument, updateDocument } from '../../services/firestore.service.js';
+import { COLLECTIONS } from '../../config/constants.js';
+import { listDocuments, setDocument, deleteDocument } from '../../services/firestore.service.js';
 import { getActiveProvince } from '../../core/province.context.js';
-import { escapeHTML, formatCurrencyUsd, formatNumberFr } from '../../utils/dom.js';
+import { escapeHTML, formatNumberFr } from '../../utils/dom.js';
 import { showToast } from '../../ui/toast.js';
 
-function convertToUsd(montant, devise, taux) {
-  const val = Math.max(0, Number(montant) || 0);
-  if (String(devise || 'USD').toUpperCase() === 'USD') {
-    return val;
+export const MOTIFS_VERSEMENT = [
+  'Initiation',
+  'Réinitiation',
+  'Shoku',
+  'Kannon',
+  'Photo sacrée',
+  'Goshintai familial',
+  'Mitamaya'
+];
+
+function toUsd(montant, devise, taux) {
+  const val = Number(montant) || 0;
+  if (devise === 'FC') {
+    const rate = Number(taux) || 2800;
+    return rate > 0 ? val / rate : 0;
   }
-  const rate = Number(taux) || 0;
-  return rate > 0 ? val / rate : 0;
+  return val;
+}
+
+function formatMoneyUsd(val) {
+  return `${(Number(val) || 0).toLocaleString('fr-FR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })} $`;
 }
 
 export async function renderFinanceView(container) {
   let activeTab = 'candidats';
-  let statusFilter = 'ALL'; // 'ALL' | 'En cours' | 'Terminé'
+  let filterMotif = 'ALL';
 
   const render = async () => {
     const province = getActiveProvince();
-    const todayIso = new Date().toISOString().slice(0, 10);
 
     const [allCandidats, allVersements] = await Promise.all([
-      listDocuments(COLLECTIONS.CANDIDATS),
-      listDocuments(COLLECTIONS.VERSEMENTS)
+      listDocuments(COLLECTIONS.CANDIDATS).catch(() => []),
+      listDocuments(COLLECTIONS.VERSEMENTS).catch(() => [])
     ]);
 
-    const candidatsProv = allCandidats.filter(
-      (c) =>
-        !c.archived &&
-        String(c.province || '').toUpperCase() === province.toUpperCase()
+    const candidats = allCandidats.filter(
+      (c) => !c.province || c.province === province
+    );
+    const candidatIds = new Set(candidats.map((c) => c.id));
+    const versements = allVersements.filter(
+      (v) =>
+        (!v.province || v.province === province) ||
+        (v.candidatId && candidatIds.has(v.candidatId))
     );
 
-    const versementsProv = allVersements.filter(
-      (v) => String(v.province || '').toUpperCase() === province.toUpperCase()
-    );
+    // Calcul du total versé en USD par candidat
+    const paidByCandidat = {};
+    versements.forEach((v) => {
+      if (!v.candidatId) return;
+      const usd = v.montantUsd !== undefined && v.montantUsd !== null
+        ? Number(v.montantUsd) || 0
+        : toUsd(v.montant, v.devise, v.taux);
+      paidByCandidat[v.candidatId] = (paidByCandidat[v.candidatId] || 0) + usd;
+    });
 
-    const filteredCandidats =
-      statusFilter === 'ALL'
-        ? candidatsProv
-        : candidatsProv.filter((c) => c.statut === statusFilter);
+    const totalPrevuUsd = candidats.reduce((s, c) => s + (Number(c.montantPrevuUsd) || 0), 0);
+    const totalVerseUsd = candidats.reduce((s, c) => s + (paidByCandidat[c.id] || 0), 0);
+    const totalResteUsd = Math.max(0, totalPrevuUsd - totalVerseUsd);
 
-    const motifOptions = FINANCE_MOTIFS.map(
+    const motifOptionsHtml = MOTIFS_VERSEMENT.map(
       (m) => `<option value="${escapeHTML(m)}">${escapeHTML(m)}</option>`
     ).join('');
 
-    const candidatOptions = candidatsProv
-      .map(
-        (c) =>
-          `<option value="${escapeHTML(c.id)}">${escapeHTML(c.nom)} (${escapeHTML(c.motif)})</option>`
-      )
-      .join('');
+    container.innerHTML = `
+      <section class="module-page finance-page">
+        <div class="page-header">
+          <h2>💰 SUIVI DE VERSEMENT — Candidats Membres</h2>
+        </div>
 
-    const currencyOptions = FINANCE_CURRENCIES.map(
-      (cur) => `<option value="${escapeHTML(cur)}">${escapeHTML(cur)}</option>`
-    ).join('');
+        <div class="card" style="padding:10px 14px;font-size:0.84rem;color:var(--text-muted);">
+          Province active : <strong style="color:var(--green-main);">${escapeHTML(province)}</strong> •
+          Catégories / Motifs : <strong>Initiation, Réinitiation, Shoku, Kannon, Photo sacrée, Goshintai familial, Mitamaya</strong>
+        </div>
 
-    const candidatsTabHtml = `
-      <div class="card">
-        <h3 style="margin:0 0 10px;">Nouveau Candidat — ${escapeHTML(province)}</h3>
-        <form id="form-candidat" class="form-stack">
-          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
-            <div class="form-group">
-              <label for="cand-nom">Nom complet</label>
-              <input id="cand-nom" type="text" required placeholder="Ex: KABONGO Jean" />
-            </div>
-            <div class="form-group">
-              <label for="cand-entity">Entité</label>
-              <input id="cand-entity" type="text" required placeholder="Ex: KANANGA — FOYER 1" />
-            </div>
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-label">Candidats Membres</div>
+            <div class="kpi-value">${formatNumberFr(candidats.length)}</div>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+          <div class="kpi-card">
+            <div class="kpi-label">Total Prévu (USD)</div>
+            <div class="kpi-value">${formatMoneyUsd(totalPrevuUsd)}</div>
+          </div>
+          <div class="kpi-card" style="border-left-color:#0d8a38;">
+            <div class="kpi-label">Total Versé (USD)</div>
+            <div class="kpi-value" style="color:#0d8a38;">${formatMoneyUsd(totalVerseUsd)}</div>
+          </div>
+          <div class="kpi-card" style="border-left-color:#d97706;">
+            <div class="kpi-label">Reste à Payer (USD)</div>
+            <div class="kpi-value" style="color:#d97706;">${formatMoneyUsd(totalResteUsd)}</div>
+          </div>
+        </div>
+
+        <div class="tabs-bar" role="tablist">
+          <button type="button" class="tab-btn ${activeTab === 'candidats' ? 'active' : ''}" data-ftab="candidats">
+            👤 Candidats Membres
+          </button>
+          <button type="button" class="tab-btn ${activeTab === 'versements' ? 'active' : ''}" data-ftab="versements">
+            💵 Versements (USD / FC)
+          </button>
+          <button type="button" class="tab-btn ${activeTab === 'releves' ? 'active' : ''}" data-ftab="releves">
+            📄 Relevés
+          </button>
+        </div>
+
+        <div id="finance-tab-host"></div>
+      </section>
+    `;
+
+    container.querySelectorAll('[data-ftab]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        activeTab = btn.dataset.ftab;
+        await render();
+      });
+    });
+
+    const host = container.querySelector('#finance-tab-host');
+    if (!host) return;
+
+    if (activeTab === 'candidats') {
+      await renderCandidatsTab(host, province, candidats, paidByCandidat, motifOptionsHtml);
+    } else if (activeTab === 'versements') {
+      await renderVersementsTab(host, province, candidats, versements, motifOptionsHtml);
+    } else if (activeTab === 'releves') {
+      renderRelevesTab(host, province, candidats, versements, paidByCandidat);
+    }
+  };
+
+  async function renderCandidatsTab(host, province, candidats, paidByCandidat, motifOptionsHtml) {
+    const filtered =
+      filterMotif === 'ALL'
+        ? candidats
+        : candidats.filter((c) => c.motif === filterMotif);
+
+    host.innerHTML = `
+      <div class="card">
+        <h3 style="margin:0 0 10px;">Enregistrer un Candidat Membre</h3>
+        <form id="form-add-candidat" class="form-stack">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
             <div class="form-group">
-              <label for="cand-motif">Motif</label>
-              <select id="cand-motif" required>${motifOptions}</select>
+              <label for="cand-nom">Nom complet du candidat</label>
+              <input id="cand-nom" type="text" required placeholder="Ex: Kalombo Jean" />
             </div>
             <div class="form-group">
-              <label for="cand-montant">Montant prévu ($)</label>
-              <input id="cand-montant" type="number" min="0" step="0.01" value="0" required />
-            </div>
-            <div class="form-group">
-              <label for="cand-statut">Statut</label>
-              <select id="cand-statut">
-                <option value="En cours">En cours</option>
-                <option value="Terminé">Terminé</option>
+              <label for="cand-motif">Catégorie / Motif du versement</label>
+              <select id="cand-motif" required>
+                <option value="">-- Choisir un motif --</option>
+                ${motifOptionsHtml}
               </select>
             </div>
+            <div class="form-group">
+              <label for="cand-montant-prevu">Montant prévu (USD)</label>
+              <input id="cand-montant-prevu" type="number" step="0.01" min="0" required placeholder="0.00" />
+            </div>
           </div>
-          <button type="submit" class="btn-primary">Enregistrer le candidat</button>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
+            <div class="form-group">
+              <label for="cand-entite">Entité / Paroisse / Centre</label>
+              <input id="cand-entite" type="text" placeholder="Ex: Kananga Centre" />
+            </div>
+            <div class="form-group">
+              <label for="cand-telephone">Téléphone (optionnel)</label>
+              <input id="cand-telephone" type="tel" placeholder="+243..." />
+            </div>
+          </div>
+
+          <button type="submit" class="btn-primary">➕ Ajouter le candidat membre</button>
         </form>
       </div>
 
       <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-          <strong>Dossiers Candidats (${filteredCandidats.length})</strong>
-          <div style="display:flex;gap:6px;">
-            <button type="button" class="tab-btn ${statusFilter === 'ALL' ? 'active' : ''}" data-filter="ALL">Tous</button>
-            <button type="button" class="tab-btn ${statusFilter === 'En cours' ? 'active' : ''}" data-filter="En cours">En cours</button>
-            <button type="button" class="tab-btn ${statusFilter === 'Terminé' ? 'active' : ''}" data-filter="Terminé">Terminé</button>
-          </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+          <h3 style="margin:0;">Liste des Candidats Membres (${filtered.length})</h3>
+          <select id="filter-motif-candidat" aria-label="Filtrer par motif" style="max-width:210px;">
+            <option value="ALL" ${filterMotif === 'ALL' ? 'selected' : ''}>Tous les motifs (7)</option>
+            ${MOTIFS_VERSEMENT.map(
+              (m) => `<option value="${escapeHTML(m)}" ${filterMotif === m ? 'selected' : ''}>${escapeHTML(m)}</option>`
+            ).join('')}
+          </select>
         </div>
 
         <div class="table-responsive">
@@ -110,105 +198,36 @@ export async function renderFinanceView(container) {
               <tr>
                 <th>Candidat</th>
                 <th>Motif</th>
-                <th>Prévu</th>
-                <th>Statut</th>
+                <th>Prévu ($)</th>
+                <th>Versé ($)</th>
+                <th>Reste ($)</th>
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
               ${
-                filteredCandidats.length === 0
-                  ? `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Aucun candidat trouvé.</td></tr>`
-                  : filteredCandidats
-                      .map(
-                        (c) => `
-                          <tr>
-                            <td><strong>${escapeHTML(c.nom)}</strong><br><span style="font-size:0.76rem;color:var(--text-muted);">${escapeHTML(c.entityName || '')}</span></td>
-                            <td>${escapeHTML(c.motif)}</td>
-                            <td>${formatCurrencyUsd(c.montantPrevu)}</td>
-                            <td>${escapeHTML(c.statut || 'En cours')}</td>
-                            <td>
-                              <button type="button" class="btn-secondary btn-archive-cand" data-id="${escapeHTML(c.id)}" style="padding:4px 8px;font-size:0.76rem;">
-                                Archiver
-                              </button>
-                            </td>
-                          </tr>
-                        `
-                      )
-                      .join('')
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-
-    const versementsTabHtml = `
-      <div class="card">
-        <h3 style="margin:0 0 10px;">Enregistrer un Versement — ${escapeHTML(province)}</h3>
-        <form id="form-versement" class="form-stack">
-          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
-            <div class="form-group">
-              <label for="vers-candidat">Candidat</label>
-              <select id="vers-candidat" required>
-                <option value="">-- Choisir un candidat --</option>
-                ${candidatOptions}
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="vers-date">Date</label>
-              <input id="vers-date" type="date" value="${todayIso}" required />
-            </div>
-          </div>
-
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
-            <div class="form-group">
-              <label for="vers-montant">Montant</label>
-              <input id="vers-montant" type="number" min="0" step="0.01" required />
-            </div>
-            <div class="form-group">
-              <label for="vers-devise">Devise</label>
-              <select id="vers-devise">${currencyOptions}</select>
-            </div>
-            <div class="form-group">
-              <label for="vers-taux">Taux du jour (FC / 1 USD)</label>
-              <input id="vers-taux" type="number" min="1" step="0.01" value="2800" required />
-            </div>
-          </div>
-
-          <button type="submit" class="btn-primary">Valider le versement</button>
-        </form>
-      </div>
-
-      <div class="card">
-        <h3 style="margin:0 0 8px;">Historique des Versements (${versementsProv.length})</h3>
-        <div class="table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Candidat</th>
-                <th>Montant</th>
-                <th>Équivalent USD</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${
-                versementsProv.length === 0
-                  ? `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Aucun versement enregistré.</td></tr>`
-                  : versementsProv
-                      .slice()
-                      .reverse()
-                      .map((v) => {
-                        const usdEquiv = convertToUsd(v.montant, v.devise, v.taux);
+                filtered.length === 0
+                  ? `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Aucun candidat enregistré pour ce filtre.</td></tr>`
+                  : filtered
+                      .map((c) => {
+                        const prevu = Number(c.montantPrevuUsd) || 0;
+                        const verse = paidByCandidat[c.id] || 0;
+                        const reste = Math.max(0, prevu - verse);
                         return `
-                          <tr>
-                            <td>${escapeHTML(v.date || '')}</td>
-                            <td>${escapeHTML(v.candidatNom || '')}</td>
-                            <td>${formatNumberFr(v.montant)} ${escapeHTML(v.devise || 'USD')}</td>
-                            <td><strong>${formatCurrencyUsd(usdEquiv)}</strong></td>
-                          </tr>
-                        `;
+                        <tr>
+                          <td>
+                            <strong>${escapeHTML(c.nom || '')}</strong>
+                            ${c.entite ? `<br><span style="font-size:0.75rem;color:var(--text-muted);">${escapeHTML(c.entite)}</span>` : ''}
+                          </td>
+                          <td><span class="badge">${escapeHTML(c.motif || '')}</span></td>
+                          <td>${formatMoneyUsd(prevu)}</td>
+                          <td style="color:#0d8a38;font-weight:700;">${formatMoneyUsd(verse)}</td>
+                          <td style="color:${reste > 0 ? '#b45309' : '#065f46'};font-weight:700;">${formatMoneyUsd(reste)}</td>
+                          <td>
+                            <button type="button" class="btn-icon btn-del-cand" data-id="${escapeHTML(c.id)}" title="Supprimer">🗑️</button>
+                          </td>
+                        </tr>
+                      `;
                       })
                       .join('')
               }
@@ -218,159 +237,340 @@ export async function renderFinanceView(container) {
       </div>
     `;
 
-    const relevesRows = candidatsProv.map((c) => {
-      const paidUsd = versementsProv
-        .filter((v) => v.candidatId === c.id)
-        .reduce((sum, v) => sum + convertToUsd(v.montant, v.devise, v.taux), 0);
-      const expectedUsd = Number(c.montantPrevu) || 0;
-      const remainingUsd = Math.max(0, expectedUsd - paidUsd);
-      return {
-        nom: c.nom,
-        entityName: c.entityName || '',
-        expectedUsd,
-        paidUsd,
-        remainingUsd
-      };
+    host.querySelector('#filter-motif-candidat')?.addEventListener('change', async (e) => {
+      filterMotif = e.target.value;
+      await render();
     });
 
-    const totalExpected = relevesRows.reduce((s, r) => s + r.expectedUsd, 0);
-    const totalPaid = relevesRows.reduce((s, r) => s + r.paidUsd, 0);
-    const totalRemaining = relevesRows.reduce((s, r) => s + r.remainingUsd, 0);
+    host.querySelector('#form-add-candidat')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const nom = f['cand-nom'].value.trim();
+      const motif = f['cand-motif'].value;
+      const montantPrevuUsd = Number(f['cand-montant-prevu'].value) || 0;
+      const entite = f['cand-entite'].value.trim();
+      const telephone = f['cand-telephone'].value.trim();
 
-    const relevesTabHtml = `
+      if (!nom || !motif) {
+        showToast('Veuillez renseigner le nom et la catégorie/motif.', 'error');
+        return;
+      }
+
+      await setDocument(COLLECTIONS.CANDIDATS, null, {
+        nom,
+        motif,
+        montantPrevuUsd,
+        entite,
+        telephone,
+        province,
+        createdAt: new Date().toISOString()
+      });
+
+      showToast('Candidat membre enregistré.', 'success');
+      await render();
+    });
+
+    host.querySelectorAll('.btn-del-cand').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!window.confirm('Supprimer ce candidat membre ?')) return;
+        await deleteDocument(COLLECTIONS.CANDIDATS, btn.dataset.id);
+        showToast('Candidat supprimé.', 'info');
+        await render();
+      });
+    });
+  }
+
+  async function renderVersementsTab(host, province, candidats, versements, motifOptionsHtml) {
+    const candidatOptions = candidats
+      .map(
+        (c) =>
+          `<option value="${escapeHTML(c.id)}" data-motif="${escapeHTML(c.motif || '')}">${escapeHTML(
+            c.nom || ''
+          )} (${escapeHTML(c.motif || '')})</option>`
+      )
+      .join('');
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    host.innerHTML = `
       <div class="card">
-        <h3 style="margin:0 0 10px;">Relevé Individuel & Bilan — ${escapeHTML(province)}</h3>
+        <h3 style="margin:0 0 10px;">Enregistrer un Versement (USD ou FC)</h3>
+        <form id="form-add-versement" class="form-stack">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
+            <div class="form-group">
+              <label for="vers-candidat">Candidat membre</label>
+              <select id="vers-candidat" required>
+                <option value="">-- Sélectionner un candidat --</option>
+                ${candidatOptions}
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="vers-motif">Catégorie / Motif du versement</label>
+              <select id="vers-motif" required>
+                <option value="">-- Choisir un motif --</option>
+                ${motifOptionsHtml}
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="vers-date">Date du versement</label>
+              <input id="vers-date" type="date" value="${todayStr}" required />
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;">
+            <div class="form-group">
+              <label for="vers-montant">Montant versé</label>
+              <input id="vers-montant" type="number" step="0.01" min="0.01" required placeholder="0.00" />
+            </div>
+            <div class="form-group">
+              <label for="vers-devise">Devise</label>
+              <select id="vers-devise">
+                <option value="USD">USD ($)</option>
+                <option value="FC">FC (Francs Congolais)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="vers-taux">Taux du jour (FC pour 1 USD)</label>
+              <input id="vers-taux" type="number" step="1" min="1" value="2800" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="vers-obs">Observation / Référence reçu (optionnel)</label>
+            <input id="vers-obs" type="text" placeholder="Ex: Reçu n° 014" />
+          </div>
+
+          <button type="submit" class="btn-primary">💾 Enregistrer le versement</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 10px;">Historique des Versements (${versements.length})</h3>
         <div class="table-responsive">
           <table>
             <thead>
               <tr>
+                <th>Date</th>
                 <th>Candidat</th>
-                <th>Prévu</th>
-                <th>Versé (USD)</th>
-                <th>Reste</th>
+                <th>Motif</th>
+                <th>Montant saisi</th>
+                <th>Équivalent USD</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               ${
-                relevesRows.length === 0
-                  ? `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Aucune donnée financière.</td></tr>`
-                  : relevesRows
-                      .map(
-                        (r) => `
-                          <tr>
-                            <td><strong>${escapeHTML(r.nom)}</strong><br><span style="font-size:0.76rem;color:var(--text-muted);">${escapeHTML(r.entityName)}</span></td>
-                            <td>${formatCurrencyUsd(r.expectedUsd)}</td>
-                            <td><strong>${formatCurrencyUsd(r.paidUsd)}</strong></td>
-                            <td>${formatCurrencyUsd(r.remainingUsd)}</td>
-                          </tr>
-                        `
-                      )
+                versements.length === 0
+                  ? `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Aucun versement enregistré.</td></tr>`
+                  : versements
+                      .map((v) => {
+                        const cand = candidats.find((c) => c.id === v.candidatId);
+                        const usdVal =
+                          v.montantUsd !== undefined && v.montantUsd !== null
+                            ? Number(v.montantUsd) || 0
+                            : toUsd(v.montant, v.devise, v.taux);
+                        return `
+                        <tr>
+                          <td>${escapeHTML(v.date || '')}</td>
+                          <td><strong>${escapeHTML(cand?.nom || v.candidatNom || 'Candidat')}</strong></td>
+                          <td><span class="badge">${escapeHTML(v.motif || cand?.motif || '')}</span></td>
+                          <td>${formatNumberFr(v.montant)} ${escapeHTML(v.devise || 'USD')}</td>
+                          <td style="font-weight:700;color:#0a6e2c;">${formatMoneyUsd(usdVal)}</td>
+                          <td>
+                            <button type="button" class="btn-icon btn-del-vers" data-id="${escapeHTML(v.id)}" title="Supprimer">🗑️</button>
+                          </td>
+                        </tr>
+                      `;
+                      })
                       .join('')
               }
             </tbody>
-            <tfoot>
-              <tr style="background:rgba(10,110,44,0.12);font-weight:800;">
-                <td>TOTAL PROVINCE</td>
-                <td>${formatCurrencyUsd(totalExpected)}</td>
-                <td>${formatCurrencyUsd(totalPaid)}</td>
-                <td>${formatCurrencyUsd(totalRemaining)}</td>
-              </tr>
-            </tfoot>
           </table>
         </div>
       </div>
     `;
 
-    container.innerHTML = `
-      <section class="module-page finance-page">
-        <div class="page-header">
-          <h2>Finance — ${escapeHTML(province)}</h2>
-        </div>
-
-        <div class="tabs-bar">
-          <button type="button" class="tab-btn ${activeTab === 'candidats' ? 'active' : ''}" data-ftab="candidats">Candidats</button>
-          <button type="button" class="tab-btn ${activeTab === 'versements' ? 'active' : ''}" data-ftab="versements">Versements</button>
-          <button type="button" class="tab-btn ${activeTab === 'releves' ? 'active' : ''}" data-ftab="releves">Relevés</button>
-        </div>
-
-        ${
-          activeTab === 'candidats'
-            ? candidatsTabHtml
-            : activeTab === 'versements'
-              ? versementsTabHtml
-              : relevesTabHtml
-        }
-      </section>
-    `;
-
-    container.querySelectorAll('[data-ftab]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        activeTab = btn.dataset.ftab;
-        render();
-      });
+    // Synchroniser automatiquement le motif du candidat sélectionné
+    const selCand = host.querySelector('#vers-candidat');
+    const selMotif = host.querySelector('#vers-motif');
+    selCand?.addEventListener('change', () => {
+      const opt = selCand.options[selCand.selectedIndex];
+      const m = opt?.dataset?.motif;
+      if (m && MOTIFS_VERSEMENT.includes(m) && selMotif) {
+        selMotif.value = m;
+      }
     });
 
-    container.querySelectorAll('[data-filter]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        statusFilter = btn.dataset.filter;
-        render();
-      });
-    });
-
-    container.querySelector('#form-candidat')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const f = e.target;
-      await setDocument(COLLECTIONS.CANDIDATS, null, {
-        province,
-        entityName: f['cand-entity'].value.trim().toUpperCase(),
-        nom: f['cand-nom'].value.trim(),
-        motif: f['cand-motif'].value,
-        montantPrevu: Math.max(0, Number(f['cand-montant'].value) || 0),
-        statut: f['cand-statut'].value,
-        archived: false
-      });
-      showToast('Candidat enregistré.', 'success');
-      render();
-    });
-
-    container.querySelectorAll('.btn-archive-cand').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        await updateDocument(COLLECTIONS.CANDIDATS, btn.dataset.id, { archived: true });
-        showToast('Candidat archivé.', 'info');
-        render();
-      });
-    });
-
-    container.querySelector('#form-versement')?.addEventListener('submit', async (e) => {
+    host.querySelector('#form-add-versement')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = e.target;
       const candidatId = f['vers-candidat'].value;
-      const candObj = candidatsProv.find((c) => c.id === candidatId);
-      if (!candObj) {
-        showToast('Veuillez sélectionner un candidat.', 'error');
+      const motif = f['vers-motif'].value;
+      const date = f['vers-date'].value;
+      const montant = Number(f['vers-montant'].value) || 0;
+      const devise = f['vers-devise'].value;
+      const taux = Number(f['vers-taux'].value) || 2800;
+      const obs = f['vers-obs'].value.trim();
+
+      if (!candidatId || !motif || montant <= 0) {
+        showToast('Veuillez remplir tous les champs obligatoires du versement.', 'error');
         return;
       }
 
-      const montant = Math.max(0, Number(f['vers-montant'].value) || 0);
-      const devise = f['vers-devise'].value;
-      const taux = Math.max(1, Number(f['vers-taux'].value) || 1);
+      const candObj = candidats.find((c) => c.id === candidatId);
+      const montantUsd = toUsd(montant, devise, taux);
 
       await setDocument(COLLECTIONS.VERSEMENTS, null, {
-        province,
-        entityId: candObj.entityId || '',
-        entityName: candObj.entityName || '',
         candidatId,
-        candidatNom: candObj.nom,
+        candidatNom: candObj?.nom || '',
+        motif,
+        date,
         montant,
         devise,
         taux,
-        date: f['vers-date'].value
+        montantUsd,
+        obs,
+        province,
+        createdAt: new Date().toISOString()
       });
 
-      showToast('Versement enregistré.', 'success');
-      render();
+      showToast('Versement enregistré avec succès.', 'success');
+      await render();
     });
-  };
+
+    host.querySelectorAll('.btn-del-vers').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!window.confirm('Supprimer ce versement ?')) return;
+        await deleteDocument(COLLECTIONS.VERSEMENTS, btn.dataset.id);
+        showToast('Versement supprimé.', 'info');
+        await render();
+      });
+    });
+  }
+
+  function renderRelevesTab(host, province, candidats, versements, paidByCandidat) {
+    // Synthèse par motif (les 7 catégories du CDC)
+    const statsByMotif = MOTIFS_VERSEMENT.map((motif) => {
+      const candsMotif = candidats.filter((c) => c.motif === motif);
+      const prevu = candsMotif.reduce((s, c) => s + (Number(c.montantPrevuUsd) || 0), 0);
+      const verse = candsMotif.reduce((s, c) => s + (paidByCandidat[c.id] || 0), 0);
+      return {
+        motif,
+        nbCandidats: candsMotif.length,
+        prevu,
+        verse,
+        reste: Math.max(0, prevu - verse)
+      };
+    });
+
+    host.innerHTML = `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+          <h3 style="margin:0;">Relevé par Catégorie / Motif — ${escapeHTML(province)}</h3>
+          <button type="button" id="btn-export-finance-csv" class="btn-secondary">📥 Exporter CSV</button>
+        </div>
+
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Catégorie / Motif</th>
+                <th>Candidats</th>
+                <th>Prévu (USD)</th>
+                <th>Versé (USD)</th>
+                <th>Reste (USD)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${statsByMotif
+                .map(
+                  (row) => `
+                  <tr>
+                    <td><strong>${escapeHTML(row.motif)}</strong></td>
+                    <td>${row.nbCandidats}</td>
+                    <td>${formatMoneyUsd(row.prevu)}</td>
+                    <td style="color:#0d8a38;font-weight:700;">${formatMoneyUsd(row.verse)}</td>
+                    <td style="color:#b45309;font-weight:700;">${formatMoneyUsd(row.reste)}</td>
+                  </tr>
+                `
+                )
+                .join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 8px;">Relevé Individuel des Candidats Membres</h3>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Candidat</th>
+                <th>Motif</th>
+                <th>Prévu ($)</th>
+                <th>Versé ($)</th>
+                <th>Solde Restant ($)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                candidats.length === 0
+                  ? `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Aucune donnée à afficher.</td></tr>`
+                  : candidats
+                      .map((c) => {
+                        const prevu = Number(c.montantPrevuUsd) || 0;
+                        const verse = paidByCandidat[c.id] || 0;
+                        const reste = Math.max(0, prevu - verse);
+                        return `
+                        <tr>
+                          <td><strong>${escapeHTML(c.nom || '')}</strong></td>
+                          <td>${escapeHTML(c.motif || '')}</td>
+                          <td>${formatMoneyUsd(prevu)}</td>
+                          <td>${formatMoneyUsd(verse)}</td>
+                          <td><strong>${formatMoneyUsd(reste)}</strong></td>
+                        </tr>
+                      `;
+                      })
+                      .join('')
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    host.querySelector('#btn-export-finance-csv')?.addEventListener('click', () => {
+      const headers = ['Candidat', 'Motif', 'Province', 'Montant Prevu USD', 'Montant Verse USD', 'Reste a Payer USD'];
+      const lines = [headers.join(';')];
+      candidats.forEach((c) => {
+        const prevu = Number(c.montantPrevuUsd) || 0;
+        const verse = paidByCandidat[c.id] || 0;
+        const reste = Math.max(0, prevu - verse);
+        lines.push(
+          [
+            `"${String(c.nom || '').replace(/"/g, '""')}"`,
+            `"${String(c.motif || '').replace(/"/g, '""')}"`,
+            `"${String(province).replace(/"/g, '""')}"`,
+            prevu.toFixed(2),
+            verse.toFixed(2),
+            reste.toFixed(2)
+          ].join(';')
+        );
+      });
+
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `SUIVI_VERSEMENT_${province}_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Relevé CSV exporté.', 'success');
+    });
+  }
 
   await render();
 }
