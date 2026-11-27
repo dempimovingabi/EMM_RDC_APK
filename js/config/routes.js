@@ -1,5 +1,5 @@
 // js/config/routes.js
-// Définition des routes SPA — EMM RD CONGO (sans blocage Premium, avec Tutoriels)
+// Définition des routes SPA — EMM RD CONGO
 
 import { USER_ROLES } from './constants.js';
 
@@ -41,7 +41,7 @@ export const ROUTES = {
   },
   finance: {
     id: 'finance',
-    title: 'Finance',
+    title: 'SUIVI DE VERSEMENT (candidats membres)',
     icon: '💰',
     requiresAuth: true,
     roles: ALL_ROLES,
