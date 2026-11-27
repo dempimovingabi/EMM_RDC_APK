@@ -51,6 +51,8 @@ function formatEntiteLabel(typeEntite, nomEntite) {
 export async function renderFinanceView(container) {
   let activeTab = 'candidats';
   let filterMotif = 'ALL';
+  let editingCandidatId = null;
+  let preselectedCandidatId = '';
 
   const render = async () => {
     const province = getActiveProvince();
@@ -61,7 +63,7 @@ export async function renderFinanceView(container) {
     ]);
 
     const candidats = allCandidats.filter(
-      (c) => !c.province || c.province === province
+      (c) => !c.archived && (!c.province || c.province === province)
     );
     const candidatIds = new Set(candidats.map((c) => c.id));
     const versements = allVersements.filter(
@@ -141,6 +143,7 @@ export async function renderFinanceView(container) {
     container.querySelectorAll('[data-ftab]').forEach((btn) => {
       btn.addEventListener('click', async () => {
         activeTab = btn.dataset.ftab;
+        editingCandidatId = null;
         await render();
       });
     });
@@ -153,6 +156,7 @@ export async function renderFinanceView(container) {
         host,
         province,
         candidats,
+        versements,
         paidByCandidat,
         motifOptionsHtml,
         typeEntiteOptionsHtml
@@ -175,6 +179,7 @@ export async function renderFinanceView(container) {
     host,
     province,
     candidats,
+    versements,
     paidByCandidat,
     motifOptionsHtml,
     typeEntiteOptionsHtml
@@ -252,7 +257,7 @@ export async function renderFinanceView(container) {
                 <th>Prévu ($)</th>
                 <th>Versé ($)</th>
                 <th>Reste ($)</th>
-                <th>Action</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -265,21 +270,79 @@ export async function renderFinanceView(container) {
                         const verse = paidByCandidat[c.id] || 0;
                         const reste = Math.max(0, prevu - verse);
                         const entiteText = formatEntiteLabel(c.typeEntite, c.entite);
-                        return `
+                        const isEditing = editingCandidatId === c.id;
+
+                        const mainRow = `
                         <tr>
                           <td>
-                            <strong>${escapeHTML(c.nom || '')}</strong>
-                            ${entiteText ? `<br><span style="font-size:0.75rem;color:var(--text-muted);">Entité : ${escapeHTML(entiteText)}</span>` : ''}
+                            <strong>${escapeHTML(c.nom \vert{}\vert{} '')}</strong>${entiteText ? `<br><span style="font-size:0.75rem;color:var(--text-muted);">Entité : ${escapeHTML(entiteText)}</span>` : ''}
                           </td>
                           <td><span class="badge">${escapeHTML(c.motif || '')}</span></td>
                           <td>${formatMoneyUsd(prevu)}</td>
                           <td style="color:#0d8a38;font-weight:700;">${formatMoneyUsd(verse)}</td>
                           <td style="color:${reste > 0 ? '#b45309' : '#065f46'};font-weight:700;">${formatMoneyUsd(reste)}</td>
                           <td>
-                            <button type="button" class="btn-icon btn-del-cand" data-id="${escapeHTML(c.id)}" title="Supprimer">🗑️</button>
+                            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                              <button type="button" class="btn-secondary btn-edit-cand" data-id="${escapeHTML(c.id)}" style="padding:5px 8px;font-size:0.75rem;">✏️ Modifier</button>
+                              <button type="button" class="btn-primary btn-vers-cand" data-id="${escapeHTML(c.id)}" style="padding:5px 8px;font-size:0.75rem;">💵 Versement</button>
+                              <button type="button" class="btn-secondary btn-arch-cand" data-id="${escapeHTML(c.id)}" style="padding:5px 8px;font-size:0.75rem;">🗂️ Archiver</button>
+                              <button type="button" class="btn-icon btn-del-cand" data-id="${escapeHTML(c.id)}" title="Supprimer">🗑️</button>
+                            </div>
                           </td>
                         </tr>
                       `;
+
+                        if (!isEditing) return mainRow;
+
+                        const editRow = `
+                        <tr style="background:#f0fdf4;">
+                          <td colspan="6">
+                            <form class="form-edit-candidat form-stack" data-id="${escapeHTML(c.id)}" style="padding:6px 0;">
+                              <strong style="color:#065f46;font-size:0.84rem;">Modification de : ${escapeHTML(c.nom || '')}</strong>
+                              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:6px;">
+                                <div class="form-group">
+                                  <label>Nom complet</label>
+                                  <input type="text" name="nom" value="${escapeHTML(c.nom || '')}" required />
+                                </div>
+                                <div class="form-group">
+                                  <label>Motif</label>
+                                  <select name="motif" required>
+                                    ${MOTIFS_VERSEMENT.map(
+                                      (m) => `<option value="${escapeHTML(m)}" ${c.motif === m ? 'selected' : ''}>${escapeHTML(m)}</option>`
+                                    ).join('')}
+                                  </select>
+                                </div>
+                                <div class="form-group">
+                                  <label>Type d'entité</label>
+                                  <select name="typeEntite" required>
+                                    ${TYPES_ENTITE.map(
+                                      (t) => `<option value="${escapeHTML(t)}" ${c.typeEntite === t ? 'selected' : ''}>${escapeHTML(t)}</option>`
+                                    ).join('')}
+                                  </select>
+                                </div>
+                                <div class="form-group">
+                                  <label>Nom de l'entité</label>
+                                  <input type="text" name="entite" value="${escapeHTML(c.entite || '')}" required />
+                                </div>
+                                <div class="form-group">
+                                  <label>Montant prévu ($)</label>
+                                  <input type="number" step="0.01" min="0" name="montantPrevuUsd" value="${escapeHTML(String(prevu))}" required />
+                                </div>
+                                <div class="form-group">
+                                  <label>Téléphone</label>
+                                  <input type="tel" name="telephone" value="${escapeHTML(c.telephone || '')}" />
+                                </div>
+                              </div>
+                              <div style="display:flex;gap:8px;margin-top:6px;">
+                                <button type="submit" class="btn-primary" style="padding:6px 10px;font-size:0.78rem;">💾 Enregistrer</button>
+                                <button type="button" class="btn-secondary btn-cancel-edit-cand" style="padding:6px 10px;font-size:0.78rem;">Annuler</button>
+                              </div>
+                            </form>
+                          </td>
+                        </tr>
+                      `;
+
+                        return mainRow + editRow;
                       })
                       .join('')
               }
@@ -320,6 +383,7 @@ export async function renderFinanceView(container) {
           entite,
           telephone,
           province,
+          archived: false,
           createdAt: new Date().toISOString()
         });
 
@@ -330,9 +394,97 @@ export async function renderFinanceView(container) {
       }
     });
 
+    host.querySelectorAll('.btn-edit-cand').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        editingCandidatId = editingCandidatId === btn.dataset.id ? null : btn.dataset.id;
+        await render();
+      });
+    });
+
+    host.querySelectorAll('.btn-cancel-edit-cand').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        editingCandidatId = null;
+        await render();
+      });
+    });
+
+    host.querySelectorAll('.form-edit-candidat').forEach((form) => {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = form.dataset.id;
+        const fd = new FormData(form);
+        const nom = String(fd.get('nom') || '').trim();
+        const motif = String(fd.get('motif') || '').trim();
+        const typeEntite = String(fd.get('typeEntite') || '').trim();
+        const entite = String(fd.get('entite') || '').trim();
+        const montantPrevuUsd = Number(fd.get('montantPrevuUsd')) || 0;
+        const telephone = String(fd.get('telephone') || '').trim();
+
+        if (!nom || !motif || !typeEntite || !entite) {
+          showToast('Veuillez compléter tous les champs obligatoires.', 'error');
+          return;
+        }
+
+        await setDocument(
+          COLLECTIONS.CANDIDATS,
+          id,
+          {
+            nom,
+            motif,
+            typeEntite,
+            entite,
+            montantPrevuUsd,
+            telephone,
+            updatedAt: new Date().toISOString()
+          },
+          { merge: true }
+        );
+
+        editingCandidatId = null;
+        showToast('Candidat membre modifié.', 'success');
+        await render();
+      });
+    });
+
+    host.querySelectorAll('.btn-vers-cand').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        preselectedCandidatId = btn.dataset.id;
+        activeTab = 'versements';
+        await render();
+      });
+    });
+
+    host.querySelectorAll('.btn-arch-cand').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const cand = candidats.find((c) => c.id === id);
+        if (!cand) return;
+        if (!window.confirm(`Archiver le dossier de "${cand.nom}" ?`)) return;
+
+        const candVersements = versements.filter((v) => v.candidatId === id);
+        const year = new Date().getFullYear();
+
+        await setDocument(COLLECTIONS.ARCHIVES, null, {
+          titre: `Candidat : ${cand.nom} (${cand.motif || ''})`,
+          categorie: 'Suivi de Versement',
+          annee: year,
+          province,
+          payload: {
+            candidat: cand,
+            versements: candVersements
+          },
+          archivedAt: new Date().toISOString()
+        });
+
+        await setDocument(COLLECTIONS.CANDIDATS, id, { archived: true, archivedAt: new Date().toISOString() }, { merge: true });
+        showToast('Candidat archivé.', 'success');
+        await render();
+      });
+    });
+
     host.querySelectorAll('.btn-del-cand').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        if (!window.confirm('Supprimer ce candidat membre ?')) return;
+        if (!window.confirm('Supprimer définitivement ce candidat membre ?')) return;
         await deleteDocument(COLLECTIONS.CANDIDATS, btn.dataset.id);
         showToast('Candidat membre supprimé.', 'info');
         await render();
@@ -351,7 +503,8 @@ export async function renderFinanceView(container) {
     const candidatOptions = candidats
       .map((c) => {
         const entiteText = formatEntiteLabel(c.typeEntite, c.entite);
-        return `<option value="${escapeHTML(c.id)}" data-motif="${escapeHTML(
+        const selected = c.id === preselectedCandidatId ? 'selected' : '';
+        return `<option value="${escapeHTML(c.id)}" ${selected} data-motif="${escapeHTML(
           c.motif || ''
         )}" data-type-entite="${escapeHTML(c.typeEntite || '')}" data-entite="${escapeHTML(
           c.entite || ''
@@ -462,236 +615,10 @@ export async function renderFinanceView(container) {
                         <tr>
                           <td>${escapeHTML(v.date || '')}</td>
                           <td>
-                            <strong>${escapeHTML(cand?.nom || v.candidatNom || 'Candidat membre')}</strong>
-                            ${entiteText ? `<br><span style="font-size:0.75rem;color:var(--text-muted);">Entité : ${escapeHTML(entiteText)}</span>` : ''}
+                            <strong>${escapeHTML(cand?.nom \vert{}\vert{} v.candidatNom \vert{}\vert{} 'Candidat membre')}</strong>${entiteText ? `<br><span style="font-size:0.75rem;color:var(--text-muted);">Entité : ${escapeHTML(entiteText)}</span>` : ''}
                           </td>
                           <td><span class="badge">${escapeHTML(v.motif || cand?.motif || '')}</span></td>
-                          <td>${formatNumberFr(v.montant)} ${escapeHTML(v.devise || 'USD')}</td>
+                          <td>${formatNumberFr(v.montant)}${escapeHTML(v.devise || 'USD')}</td>
                           <td style="font-weight:700;color:#0a6e2c;">${formatMoneyUsd(usdVal)}</td>
                           <td>
-                            <button type="button" class="btn-icon btn-del-vers" data-id="${escapeHTML(v.id)}" title="Supprimer">🗑️</button>
-                          </td>
-                        </tr>
-                      `;
-                      })
-                      .join('')
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-
-    const selCand = host.querySelector('#vers-candidat');
-    const selMotif = host.querySelector('#vers-motif');
-    const selTypeEntite = host.querySelector('#vers-type-entite');
-    const inputEntite = host.querySelector('#vers-entite');
-
-    selCand?.addEventListener('change', () => {
-      const opt = selCand.options[selCand.selectedIndex];
-      const m = opt?.dataset?.motif;
-      const tEnt = opt?.dataset?.typeEntite;
-      const nEnt = opt?.dataset?.entite;
-      if (m && MOTIFS_VERSEMENT.includes(m) && selMotif) {
-        selMotif.value = m;
-      }
-      if (tEnt && TYPES_ENTITE.includes(tEnt) && selTypeEntite) {
-        selTypeEntite.value = tEnt;
-      }
-      if (nEnt && inputEntite) {
-        inputEntite.value = nEnt;
-      }
-    });
-
-    host.querySelector('#form-add-versement')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const f = e.target;
-      const candidatId = f['vers-candidat'].value;
-      const motif = f['vers-motif'].value;
-      const date = f['vers-date'].value;
-      const typeEntite = f['vers-type-entite'].value;
-      const entite = f['vers-entite'].value.trim();
-      const montant = Number(f['vers-montant'].value) || 0;
-      const devise = f['vers-devise'].value;
-      const taux = Number(f['vers-taux'].value) || 2800;
-      const obs = f['vers-obs'].value.trim();
-
-      if (!candidatId || !motif || montant <= 0) {
-        showToast('Veuillez remplir tous les champs obligatoires du versement.', 'error');
-        return;
-      }
-
-      const candObj = candidats.find((c) => c.id === candidatId);
-      const finalTypeEntite = typeEntite || candObj?.typeEntite || '';
-      const finalEntite = entite || candObj?.entite || '';
-      const montantUsd = toUsd(montant, devise, taux);
-
-      await setDocument(COLLECTIONS.VERSEMENTS, null, {
-        candidatId,
-        candidatNom: candObj?.nom || '',
-        motif,
-        date,
-        typeEntite: finalTypeEntite,
-        entite: finalEntite,
-        montant,
-        devise,
-        taux,
-        montantUsd,
-        obs,
-        province,
-        createdAt: new Date().toISOString()
-      });
-
-      showToast('Versement enregistré avec succès.', 'success');
-      await render();
-    });
-
-    host.querySelectorAll('.btn-del-vers').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        if (!window.confirm('Supprimer ce versement ?')) return;
-        await deleteDocument(COLLECTIONS.VERSEMENTS, btn.dataset.id);
-        showToast('Versement supprimé.', 'info');
-        await render();
-      });
-    });
-  }
-
-  function renderRelevesTab(host, province, candidats, paidByCandidat) {
-    const statsByMotif = MOTIFS_VERSEMENT.map((motif) => {
-      const candsMotif = candidats.filter((c) => c.motif === motif);
-      const prevu = candsMotif.reduce((s, c) => s + (Number(c.montantPrevuUsd) || 0), 0);
-      const verse = candsMotif.reduce((s, c) => s + (paidByCandidat[c.id] || 0), 0);
-      return {
-        motif,
-        nbCandidats: candsMotif.length,
-        prevu,
-        verse,
-        reste: Math.max(0, prevu - verse)
-      };
-    });
-
-    host.innerHTML = `
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-          <h3 style="margin:0;">Relevé par Catégorie / Motif — ${escapeHTML(province)}</h3>
-          <button type="button" id="btn-export-finance-csv" class="btn-secondary">📥 Exporter CSV</button>
-        </div>
-
-        <div class="table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th>Catégorie / Motif</th>
-                <th>Candidats</th>
-                <th>Prévu (USD)</th>
-                <th>Versé (USD)</th>
-                <th>Reste (USD)</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${statsByMotif
-                .map(
-                  (row) => `
-                  <tr>
-                    <td><strong>${escapeHTML(row.motif)}</strong></td>
-                    <td>${row.nbCandidats}</td>
-                    <td>${formatMoneyUsd(row.prevu)}</td>
-                    <td style="color:#0d8a38;font-weight:700;">${formatMoneyUsd(row.verse)}</td>
-                    <td style="color:#b45309;font-weight:700;">${formatMoneyUsd(row.reste)}</td>
-                  </tr>
-                `
-                )
-                .join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card">
-        <h3 style="margin:0 0 8px;">Relevé Individuel des Candidats Membres</h3>
-        <div class="table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th>Candidat</th>
-                <th>Entité</th>
-                <th>Motif</th>
-                <th>Prévu ($)</th>
-                <th>Versé ($)</th>
-                <th>Solde Restant ($)</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${
-                candidats.length === 0
-                  ? `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Aucune donnée à afficher.</td></tr>`
-                  : candidats
-                      .map((c) => {
-                        const prevu = Number(c.montantPrevuUsd) || 0;
-                        const verse = paidByCandidat[c.id] || 0;
-                        const reste = Math.max(0, prevu - verse);
-                        const entiteText = formatEntiteLabel(c.typeEntite, c.entite);
-                        return `
-                        <tr>
-                          <td><strong>${escapeHTML(c.nom || '')}</strong></td>
-                          <td>${escapeHTML(entiteText || '—')}</td>
-                          <td>${escapeHTML(c.motif || '')}</td>
-                          <td>${formatMoneyUsd(prevu)}</td>
-                          <td>${formatMoneyUsd(verse)}</td>
-                          <td><strong>${formatMoneyUsd(reste)}</strong></td>
-                        </tr>
-                      `;
-                      })
-                      .join('')
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-
-    host.querySelector('#btn-export-finance-csv')?.addEventListener('click', () => {
-      const headers = [
-        'Candidat',
-        'Type Entite',
-        'Nom Entite',
-        'Motif',
-        'Province',
-        'Montant Prevu USD',
-        'Montant Verse USD',
-        'Reste a Payer USD'
-      ];
-      const lines = [headers.join(';')];
-      candidats.forEach((c) => {
-        const prevu = Number(c.montantPrevuUsd) || 0;
-        const verse = paidByCandidat[c.id] || 0;
-        const reste = Math.max(0, prevu - verse);
-        lines.push(
-          [
-            `"${String(c.nom || '').replace(/"/g, '""')}"`,
-            `"${String(c.typeEntite || '').replace(/"/g, '""')}"`,
-            `"${String(c.entite || '').replace(/"/g, '""')}"`,
-            `"${String(c.motif || '').replace(/"/g, '""')}"`,
-            `"${String(province).replace(/"/g, '""')}"`,
-            prevu.toFixed(2),
-            verse.toFixed(2),
-            reste.toFixed(2)
-          ].join(';')
-        );
-      });
-
-      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `SUIVI_VERSEMENT_${province}_${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showToast('Relevé CSV exporté.', 'success');
-    });
-  }
-
-  await render();
-}
+                            <button type="button" class="btn-icon btn-del-
