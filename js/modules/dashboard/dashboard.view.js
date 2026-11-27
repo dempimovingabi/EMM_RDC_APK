@@ -1,113 +1,165 @@
 // js/modules/dashboard/dashboard.view.js
-// Vue Tableau de Bord analytique — EMM RD CONGO
+// Module 1 : Tableau de Bord (Dashboard) — EMM RD CONGO
 
-import { APP_CONFIG, ROLE_LABELS } from '../../config/constants.js';
+import { COLLECTIONS } from '../../config/constants.js';
+import { listDocuments } from '../../services/firestore.service.js';
+import { getActiveProvince } from '../../core/province.context.js';
 import { store } from '../../core/store.js';
 import { router } from '../../core/router.js';
-import { escapeHTML, formatNumberFr, formatCurrencyUsd } from '../../utils/dom.js';
-import { formatTodayFr, formatDateFr } from '../../utils/date.js';
-import { computeDashboardMetrics } from './dashboard.stats.js';
+import { escapeHTML, formatNumberFr } from '../../utils/dom.js';
 
-function renderQuarterlyBars(series = []) {
-  const maxVal = Math.max(
-    1,
-    ...series.flatMap((s) => [Number(s.entrees) || 0, Number(s.sorties) || 0])
-  );
-
-  return `
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:end;height:150px;padding-top:16px;">
-      ${series
-        .map((item) => {
-          const hIn = Math.max(6, Math.round((item.entrees / maxVal) * 105));
-          const hOut = Math.max(6, Math.round((item.sorties / maxVal) * 105));
-          return `
-            <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
-              <div style="display:flex;align-items:flex-end;gap:6px;height:110px;">
-                <div title="Entrées : ${formatCurrencyUsd(item.entrees)}"
-                     style="width:20px;height:${hIn}px;background:#0a6e2c;border-radius:6px 6px 0 0;"></div>
-                <div title="Sorties : ${formatCurrencyUsd(item.sorties)}"
-                     style="width:20px;height:${hOut}px;background:#dc2626;border-radius:6px 6px 0 0;"></div>
-              </div>
-              <strong style="font-size:0.78rem;">${escapeHTML(item.label)}</strong>
-              <span style="font-size:0.7rem;color:var(--text-muted);">
-                +${formatNumberFr(item.entrees)}$ / -${formatNumberFr(item.sorties)}$
-              </span>
-            </div>
-          `;
-        })
-        .join('')}
-    </div>
-    <div style="display:flex;gap:16px;justify-content:center;margin-top:10px;font-size:0.8rem;">
-      <span><strong style="color:#0a6e2c;">■</strong> Entrées (USD)</span>
-      <span><strong style="color:#dc2626;">■</strong> Sorties (USD)</span>
-    </div>
-  `;
+function getTodayFrench() {
+  const str = new Date().toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 export async function renderDashboardView(container) {
-  const { user, activeProvince } = store.getState();
-  const roleLabel = ROLE_LABELS[user?.role] || 'Utilisateur';
-  const todayLabel = formatTodayFr();
+  const state = store.getState() || {};
+  const user = state.user || state.currentUser || {};
+  const province = getActiveProvince();
 
-  container.innerHTML = `<div class="card"><p>Chargement des indicateurs...</p></div>`;
+  const [cultesNat, versements, candidats, depouillements, patrimoineSites] = await Promise.all([
+    listDocuments(COLLECTIONS.FREQ_CULTE_NATIONAL).catch(() => []),
+    listDocuments(COLLECTIONS.VERSEMENTS).catch(() => []),
+    listDocuments(COLLECTIONS.CANDIDATS).catch(() => []),
+    listDocuments(COLLECTIONS.DEPOUILLEMENTS).catch(() => []),
+    listDocuments(COLLECTIONS.PATRIMOINE_SITES).catch(() => [])
+  ]);
 
-  const metrics = await computeDashboardMetrics(activeProvince);
-  const { culte, totalRecettesUsd, series } = metrics;
+  // Totaux Cultes RDC
+  const dernierCulte = cultesNat[0] || null;
+  let totalMb = 0, totalSy = 0, totalNv = 0, nbEntites = 0;
+  if (dernierCulte && Array.isArray(dernierCulte.provinces)) {
+    dernierCulte.provinces.forEach((p) => {
+      (p.entites || []).forEach((e) => {
+        nbEntites += 1;
+        totalMb += Number(e.mb) || 0;
+        totalSy += Number(e.sy) || 0;
+        totalNv += Number(e.nv) || 0;
+      });
+    });
+  }
+  const totalGeneralCulte = totalMb + totalSy + totalNv;
+
+  // Recettes cumulées converties en USD
+  const totalUsd = versements.reduce((sum, v) => {
+    const montant = Number(v.montant) || 0;
+    if (v.devise === 'FC') {
+      const taux = Number(v.taux) || 2800;
+      return sum + (taux > 0 ? montant / taux : 0);
+    }
+    return sum + montant;
+  }, 0);
+
+  const modulesCards = [
+    {
+      route: 'frequences',
+      icon: '📊',
+      title: 'Fréquences',
+      desc: 'Diffusion journalière, Diffusion suite, Numérique & Synthèse nationale'
+    },
+    {
+      route: 'finance',
+      icon: '💰',
+      title: 'Finance',
+      desc: `Candidats (${candidats.length}) & Versements USD/FC (${versements.length})`
+    },
+    {
+      route: 'depouillement',
+      icon: '🧾',
+      title: 'Dépouillement',
+      desc: `Séances (${depouillements.length}) & comptage des 7 rubriques`
+    },
+    {
+      route: 'patrimoine',
+      icon: '🏛️',
+      title: 'Patrimoine',
+      desc: `Sites (${patrimoineSites.length}), biens mobiliers & réparations`
+    },
+    {
+      route: 'archives',
+      icon: '🗂️',
+      title: 'Archives',
+      desc: 'Classement annuel, recherche & restauration des dossiers'
+    },
+    {
+      route: 'administration',
+      icon: '⚙️',
+      title: 'Administration',
+      desc: 'Utilisateurs, annonces officielles & sauvegarde JSON'
+    }
+  ];
 
   container.innerHTML = `
     <section class="module-page dashboard-page">
-      <!-- Bannière institutionnelle -->
-      <div class="card" style="background:linear-gradient(135deg,#0d8a38,#043c16);color:#ffffff;border:0;">
-        <div style="font-size:0.8rem;opacity:0.9;text-transform:capitalize;">${escapeHTML(todayLabel)}</div>
-        <h2 style="margin:6px 0 4px;color:#ffffff;font-size:1.18rem;">${APP_CONFIG.churchName}</h2>
-        <div style="font-size:0.84rem;opacity:0.92;">
-          Connecté : <strong>${escapeHTML(user?.email || 'Utilisateur')}</strong> (${escapeHTML(roleLabel)}) • Province : <strong>${escapeHTML(activeProvince)}</strong>
+      <div class="card" style="background:linear-gradient(135deg,#0d8a38,#0a6e2c,#043c16);color:#ffffff;border:0;">
+        <div style="font-size:0.84rem;opacity:0.92;">${escapeHTML(getTodayFrench())}</div>
+        <h2 style="margin:4px 0 6px;color:#ffffff;font-size:1.25rem;">ÉGLISE MESSIANIQUE MONDIALE</h2>
+        <div style="font-size:0.84rem;">
+          Connecté : <strong>${escapeHTML(user.email || 'Utilisateur')}</strong> • Province : <strong>${escapeHTML(province)}</strong>
         </div>
       </div>
 
-      <!-- Cartes KPI -->
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px;">
-        <div class="card" style="margin:0;">
-          <div style="font-size:0.78rem;color:var(--text-muted);">Membres (MB)</div>
-          <div style="font-size:1.35rem;font-weight:800;color:var(--green-main);">${formatNumberFr(culte.mb)}</div>
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Membres (MB)</div>
+          <div class="kpi-value">${formatNumberFr(totalMb)}</div>
         </div>
-        <div class="card" style="margin:0;">
-          <div style="font-size:0.78rem;color:var(--text-muted);">Sympathisants (SY)</div>
-          <div style="font-size:1.35rem;font-weight:800;">${formatNumberFr(culte.sy)}</div>
+        <div class="kpi-card">
+          <div class="kpi-label">Sympathisants (SY)</div>
+          <div class="kpi-value">${formatNumberFr(totalSy)}</div>
         </div>
-        <div class="card" style="margin:0;">
-          <div style="font-size:0.78rem;color:var(--text-muted);">Nouveaux Venus (NV)</div>
-          <div style="font-size:1.35rem;font-weight:800;">${formatNumberFr(culte.nv)}</div>
+        <div class="kpi-card">
+          <div class="kpi-label">Nouveaux Venus (NV)</div>
+          <div class="kpi-value">${formatNumberFr(totalNv)}</div>
         </div>
-        <div class="card" style="margin:0;">
-          <div style="font-size:0.78rem;color:var(--text-muted);">Recettes Cumulées</div>
-          <div style="font-size:1.25rem;font-weight:800;color:#eab308;">${formatCurrencyUsd(totalRecettesUsd)}</div>
+        <div class="kpi-card" style="border-left-color:#d97706;">
+          <div class="kpi-label">Recettes Cumulées</div>
+          <div class="kpi-value" style="color:#d97706;">${totalUsd.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $</div>
         </div>
       </div>
 
-      <!-- Synthèse Fréquentation Nationale -->
       <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
           <div>
-            <strong>Effectif Total Cultes RDC : ${formatNumberFr(culte.total)}</strong>
+            <strong>Effectif Total Cultes RDC : ${formatNumberFr(totalGeneralCulte)}</strong>
             <div style="font-size:0.8rem;color:var(--text-muted);">
-              ${culte.entitiesCount} entités actives ${culte.culteDate ? `• Dernier culte : ${escapeHTML(formatDateFr(culte.culteDate))}` : ''}
+              ${nbEntites} entités actives${dernierCulte?.culteDate ? ` • Culte du ${escapeHTML(dernierCulte.culteDate)}` : ''}
             </div>
           </div>
-          <button type="button" id="btn-dash-go-freq" class="btn-primary">Ouvrir Fréquences</button>
+          <button type="button" class="btn-primary" data-go="frequences">Ouvrir Fréquences</button>
         </div>
       </div>
 
-      <!-- Graphique Trimestriel Glissant -->
-      <div class="card">
-        <h3 style="margin:0 0 4px;font-size:1rem;">Évolution Financière Trimestrielle (3 derniers mois)</h3>
-        <p style="margin:0;font-size:0.8rem;color:var(--text-muted);">Comparaison Entrées / Sorties converties en USD</p>
-        ${renderQuarterlyBars(series)}
+      <h3 style="margin:12px 0 8px;font-size:1rem;">Accès Direct aux Modules EMM RD CONGO</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;">
+        ${modulesCards
+          .map(
+            (m) => `
+            <div class="card" style="margin-bottom:0;display:flex;flex-direction:column;justify-content:space-between;gap:10px;">
+              <div>
+                <div style="font-weight:800;font-size:0.98rem;color:var(--green-main);">${m.icon} ${m.title}</div>
+                <p style="margin:4px 0 0;font-size:0.82rem;color:var(--text-muted);">${m.desc}</p>
+              </div>
+              <button type="button" class="btn-secondary" data-go="${m.route}" style="align-self:flex-start;">
+                Ouvrir ${m.title}
+              </button>
+            </div>
+          `
+          )
+          .join('')}
       </div>
     </section>
   `;
 
-  container.querySelector('#btn-dash-go-freq')?.addEventListener('click', () => {
-    router.navigate('frequences', { tab: 'cultes' });
+  container.querySelectorAll('[data-go]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      router.navigate(btn.dataset.go);
+    });
   });
 }
