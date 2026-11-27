@@ -1,5 +1,5 @@
 // js/modules/finance/finance.view.js
-// Module Finance : SUIVI DE VERSEMENT (Candidats Membres) — EMM RD CONGO
+// Module Finance : SUIVI DE VERSEMENT (candidats membres) — EMM RD CONGO
 
 import { COLLECTIONS } from '../../config/constants.js';
 import { listDocuments, setDocument, deleteDocument } from '../../services/firestore.service.js';
@@ -95,7 +95,7 @@ export async function renderFinanceView(container) {
     container.innerHTML = `
       <section class="module-page finance-page">
         <div class="page-header">
-          <h2>💰 SUIVI DE VERSEMENT — Candidats Membres</h2>
+          <h2>💰 SUIVI DE VERSEMENT (candidats membres)</h2>
         </div>
 
         <div class="card" style="padding:10px 14px;font-size:0.84rem;color:var(--text-muted);">
@@ -186,11 +186,11 @@ export async function renderFinanceView(container) {
 
     host.innerHTML = `
       <div class="card">
-        <h3 style="margin:0 0 10px;">Enregistrer un Candidat Membre</h3>
+        <h3 style="margin:0 0 10px;">Enregistrer un candidat membre</h3>
         <form id="form-add-candidat" class="form-stack">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
             <div class="form-group">
-              <label for="cand-nom">Nom complet du candidat</label>
+              <label for="cand-nom">Nom complet du candidat membre</label>
               <input id="cand-nom" type="text" required placeholder="Ex: Kalombo Jean" />
             </div>
             <div class="form-group">
@@ -224,7 +224,11 @@ export async function renderFinanceView(container) {
             </div>
           </div>
 
-          <button type="submit" class="btn-primary">➕ Ajouter le candidat membre</button>
+          <div style="margin-top:6px;">
+            <button type="submit" id="btn-submit-candidat" class="btn-primary">
+              ➕ Enregistrer un candidat membre
+            </button>
+          </div>
         </form>
       </div>
 
@@ -254,7 +258,7 @@ export async function renderFinanceView(container) {
             <tbody>
               ${
                 filtered.length === 0
-                  ? `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Aucun candidat enregistré pour ce filtre.</td></tr>`
+                  ? `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Aucun candidat membre enregistré pour ce filtre.</td></tr>`
                   : filtered
                       .map((c) => {
                         const prevu = Number(c.montantPrevuUsd) || 0;
@@ -293,6 +297,7 @@ export async function renderFinanceView(container) {
     host.querySelector('#form-add-candidat')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = e.target;
+      const submitBtn = host.querySelector('#btn-submit-candidat');
       const nom = f['cand-nom'].value.trim();
       const motif = f['cand-motif'].value;
       const montantPrevuUsd = Number(f['cand-montant-prevu'].value) || 0;
@@ -305,26 +310,31 @@ export async function renderFinanceView(container) {
         return;
       }
 
-      await setDocument(COLLECTIONS.CANDIDATS, null, {
-        nom,
-        motif,
-        montantPrevuUsd,
-        typeEntite,
-        entite,
-        telephone,
-        province,
-        createdAt: new Date().toISOString()
-      });
+      if (submitBtn) submitBtn.disabled = true;
+      try {
+        await setDocument(COLLECTIONS.CANDIDATS, null, {
+          nom,
+          motif,
+          montantPrevuUsd,
+          typeEntite,
+          entite,
+          telephone,
+          province,
+          createdAt: new Date().toISOString()
+        });
 
-      showToast('Candidat membre enregistré.', 'success');
-      await render();
+        showToast('Candidat membre enregistré.', 'success');
+        await render();
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
     });
 
     host.querySelectorAll('.btn-del-cand').forEach((btn) => {
       btn.addEventListener('click', async () => {
         if (!window.confirm('Supprimer ce candidat membre ?')) return;
         await deleteDocument(COLLECTIONS.CANDIDATS, btn.dataset.id);
-        showToast('Candidat supprimé.', 'info');
+        showToast('Candidat membre supprimé.', 'info');
         await render();
       });
     });
@@ -361,7 +371,7 @@ export async function renderFinanceView(container) {
             <div class="form-group">
               <label for="vers-candidat">Candidat membre</label>
               <select id="vers-candidat" required>
-                <option value="">-- Sélectionner un candidat --</option>
+                <option value="">-- Sélectionner un candidat membre --</option>
                 ${candidatOptions}
               </select>
             </div>
@@ -452,7 +462,7 @@ export async function renderFinanceView(container) {
                         <tr>
                           <td>${escapeHTML(v.date || '')}</td>
                           <td>
-                            <strong>${escapeHTML(cand?.nom || v.candidatNom || 'Candidat')}</strong>
+                            <strong>${escapeHTML(cand?.nom || v.candidatNom || 'Candidat membre')}</strong>
                             ${entiteText ? `<br><span style="font-size:0.75rem;color:var(--text-muted);">Entité : ${escapeHTML(entiteText)}</span>` : ''}
                           </td>
                           <td><span class="badge">${escapeHTML(v.motif || cand?.motif || '')}</span></td>
