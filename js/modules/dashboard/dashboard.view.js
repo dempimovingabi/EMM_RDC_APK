@@ -66,7 +66,7 @@ export async function renderDashboardView(container) {
     {
       route: 'finance',
       icon: '💰',
-      title: 'Finance',
+      title: 'SUIVI DE VERSEMENT (candidats membres)',
       desc: `Candidats (${candidats.length}) & Versements USD/FC (${versements.length})`
     },
     {
@@ -143,11 +143,11 @@ export async function renderDashboardView(container) {
             (m) => `
             <div class="card" style="margin-bottom:0;display:flex;flex-direction:column;justify-content:space-between;gap:10px;">
               <div>
-                <div style="font-weight:800;font-size:0.98rem;color:var(--green-main);">${m.icon} ${m.title}</div>
-                <p style="margin:4px 0 0;font-size:0.82rem;color:var(--text-muted);">${m.desc}</p>
+                <div style="font-weight:800;font-size:0.98rem;color:var(--green-main);">${m.icon} ${escapeHTML(m.title)}</div>
+                <p style="margin:4px 0 0;font-size:0.82rem;color:var(--text-muted);">${escapeHTML(m.desc)}</p>
               </div>
-              <button type="button" class="btn-secondary" data-go="${m.route}" style="align-self:flex-start;">
-                Ouvrir ${m.title}
+              <button type="button" class="btn-secondary" data-go="${escapeHTML(m.route)}" style="align-self:flex-start;">
+                Ouvrir ${escapeHTML(m.title)}
               </button>
             </div>
           `
