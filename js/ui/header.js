@@ -1,5 +1,5 @@
 // js/ui/header.js
-// En-tête applicatif avec bouton Hamburger, bouton Retour vers Tableau de bord & Tutoriels — EMM RD CONGO
+// En-tête applicatif, menu Hamburger & bouton retour vers Tableau de bord — EMM RD CONGO
 
 import { APP_CONFIG, PROVINCES_RDC } from '../config/constants.js';
 import { store } from '../core/store.js';
@@ -24,8 +24,8 @@ function ensureDrawerExists() {
     top:0;
     left:0;
     bottom:0;
-    width:275px;
-    max-width:84vw;
+    width:280px;
+    max-width:85vw;
     background:#ffffff;
     color:#111827;
     z-index:2500;
@@ -55,30 +55,69 @@ function ensureDrawerExists() {
   return drawer;
 }
 
-function ensureBackBarExists() {
-  let backBar = document.getElementById('emm-module-back-bar');
-  if (backBar) return backBar;
+function syncModuleBackBar(currentRoute, isConnected) {
+  const existingBar = document.getElementById('emm-module-back-bar');
 
-  const mainEl = document.getElementById('app-main') || document.querySelector('main');
-  if (!mainEl) return null;
+  if (!isConnected || !currentRoute || currentRoute === 'dashboard' || currentRoute === 'login') {
+    if (existingBar) existingBar.remove();
+    return;
+  }
 
-  backBar = document.createElement('div');
-  backBar.id = 'emm-module-back-bar';
-  backBar.className = 'no-print';
+  const host =
+    document.getElementById('container') ||
+    document.getElementById('app-main') ||
+    document.querySelector('main');
+
+  if (!host) return;
+
+  let backBar = existingBar;
+  if (!backBar) {
+    backBar = document.createElement('div');
+    backBar.id = 'emm-module-back-bar';
+    backBar.className = 'no-print';
+  }
+
   backBar.style.cssText = `
-    display:none;
+    display:flex;
     align-items:center;
     justify-content:space-between;
     gap:8px;
-    margin-bottom:10px;
+    margin:0 0 10px 0;
     padding:8px 10px;
-    background:var(--bg-card);
-    border:1px solid var(--border-color);
+    background:#ffffff;
+    color:#111827;
+    border:1px solid #d1d5db;
     border-radius:10px;
+    box-shadow:0 1px 4px rgba(0,0,0,0.06);
   `;
 
-  mainEl.insertBefore(backBar, mainEl.firstChild);
-  return backBar;
+  backBar.innerHTML = `
+    <button
+      type="button"
+      id="btn-back-to-dashboard"
+      style="background:#0a6e2c;color:#ffffff;border:0;border-radius:8px;padding:8px 12px;font-size:0.82rem;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"
+    >
+      ← Tableau de bord
+    </button>
+    <button
+      type="button"
+      id="btn-backbar-tutoriel"
+      style="background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:8px;padding:6px 10px;font-size:0.78rem;font-weight:700;cursor:pointer;"
+    >
+      🎓 Aide
+    </button>
+  `;
+
+  if (host.firstChild !== backBar) {
+    host.insertBefore(backBar, host.firstChild);
+  }
+
+  backBar.querySelector('#btn-back-to-dashboard')?.addEventListener('click', () => {
+    router.navigate('dashboard');
+  });
+  backBar.querySelector('#btn-backbar-tutoriel')?.addEventListener('click', () => {
+    router.navigate('tutoriels');
+  });
 }
 
 export function initHeader(onLogout) {
@@ -91,7 +130,6 @@ export function initHeader(onLogout) {
 
   const drawer = ensureDrawerExists();
   const backdrop = document.getElementById('emm-drawer-backdrop');
-  const backBar = ensureBackBarExists();
 
   const closeDrawer = () => {
     drawer.style.display = 'none';
@@ -106,7 +144,7 @@ export function initHeader(onLogout) {
     const menuItems = [
       { route: 'dashboard', icon: '🏠', label: 'Tableau de Bord' },
       { route: 'frequences', icon: '📊', label: 'Fréquences' },
-      { route: 'finance', icon: '💰', label: 'Finance (Candidats & Versements)' },
+      { route: 'finance', icon: '💰', label: 'SUIVI DE VERSEMENT (candidats membres)' },
       { route: 'depouillement', icon: '🧾', label: 'Dépouillement des Offrandes' },
       { route: 'patrimoine', icon: '🏛️', label: 'Patrimoine' },
       { route: 'archives', icon: '🗂️', label: 'Archives' },
@@ -143,7 +181,7 @@ export function initHeader(onLogout) {
                 : item.route === 'tutoriels'
                 ? '#92400e'
                 : '#111827'
-            };font-weight:700;font-size:0.86rem;cursor:pointer;"
+            };font-weight:700;font-size:0.84rem;cursor:pointer;line-height:1.25;"
           >
             ${item.icon} ${item.label}
           </button>
@@ -196,50 +234,22 @@ export function initHeader(onLogout) {
 
   const renderHeader = () => {
     const state = store.getState() || {};
-    if (!isUserConnected(state)) {
+    const connected = isUserConnected(state);
+    const currentRoute = state.currentRoute || 'dashboard';
+
+    syncModuleBackBar(currentRoute, connected);
+
+    if (!connected) {
       headerEl.classList.add('hidden');
       headerEl.style.display = 'none';
-      if (backBar) backBar.style.display = 'none';
       closeDrawer();
       return;
     }
 
     const activeProvince = state.activeProvince || 'KASAÏ-CENTRAL';
-    const currentRoute = state.currentRoute || 'dashboard';
 
     headerEl.classList.remove('hidden');
     headerEl.style.display = 'block';
-
-    // Afficher automatiquement le bouton retour vers le Tableau de Bord dans tous les sous-modules
-    if (backBar) {
-      if (currentRoute && currentRoute !== 'dashboard' && currentRoute !== 'login') {
-        backBar.style.display = 'flex';
-        backBar.innerHTML = `
-          <button
-            type="button"
-            id="btn-back-to-dashboard"
-            style="background:var(--green-main);color:#ffffff;border:0;border-radius:8px;padding:7px 12px;font-size:0.82rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"
-          >
-            ← Tableau de bord
-          </button>
-          <button
-            type="button"
-            id="btn-backbar-tutoriel"
-            style="background:rgba(217,119,6,0.12);color:#b45309;border:1px solid rgba(217,119,6,0.3);border-radius:8px;padding:6px 10px;font-size:0.78rem;font-weight:700;cursor:pointer;"
-          >
-            🎓 Aide
-          </button>
-        `;
-        backBar.querySelector('#btn-back-to-dashboard')?.addEventListener('click', () => {
-          router.navigate('dashboard');
-        });
-        backBar.querySelector('#btn-backbar-tutoriel')?.addEventListener('click', () => {
-          router.navigate('tutoriels');
-        });
-      } else {
-        backBar.style.display = 'none';
-      }
-    }
 
     const provOptions = PROVINCES_RDC.map(
       (p) => `<option value="${escapeHTML(p)}" ${p === activeProvince ? 'selected' : ''}>${escapeHTML(p)}</option>`
@@ -302,4 +312,14 @@ export function initHeader(onLogout) {
 
   renderHeader();
   store.subscribe(renderHeader);
+
+  // Réappliquer la barre retour juste après le rendu de chaque vue
+  window.addEventListener('hashchange', () => {
+    setTimeout(renderHeader, 60);
+  });
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('button, a')) {
+      setTimeout(renderHeader, 120);
+    }
+  });
 }
