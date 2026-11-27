@@ -1,5 +1,5 @@
 // js/config/routes.js
-// Définition des routes SPA — EMM RD CONGO (sans blocage Premium)
+// Définition des routes SPA — EMM RD CONGO (sans blocage Premium, avec Tutoriels)
 
 import { USER_ROLES } from './constants.js';
 
@@ -82,6 +82,15 @@ export const ROUTES = {
     requiresAuth: true,
     roles: ALL_ROLES,
     showInBottomNav: true,
+    navSlot: 'menu'
+  },
+  tutoriels: {
+    id: 'tutoriels',
+    title: 'Tutoriels & Guide',
+    icon: '🎓',
+    requiresAuth: true,
+    roles: ALL_ROLES,
+    showInBottomNav: false,
     navSlot: 'menu'
   }
 };
