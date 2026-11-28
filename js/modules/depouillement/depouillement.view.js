@@ -1,5 +1,5 @@
 // js/modules/depouillement/depouillement.view.js
-// Module Dépouillement des Offrandes (Séance multi-entités, nominatifs, transport, dépenses générales & banque)
+// Module Dépouillement des Offrandes — Décaissements (Transport & Dépenses générales) sans conversion FC/USD
 
 export const TYPES_ENTITE_OFFRANDES = [
   'Centre de Formation',
@@ -44,19 +44,6 @@ function formatUsd(val) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })} $`;
-}
-
-function toFc(montant, devise, taux) {
-  const v = Number(montant) || 0;
-  const r = Number(taux) || 2800;
-  return devise === 'USD' ? v * r : v;
-}
-
-function toUsd(montant, devise, taux) {
-  const v = Number(montant) || 0;
-  const r = Number(taux) || 2800;
-  if (devise === 'USD') return v;
-  return r > 0 ? v / r : 0;
 }
 
 function getActiveProvinceSafe() {
@@ -148,19 +135,18 @@ function createEmptyEntiteEntry(typeEntite = TYPES_ENTITE_OFFRANDES[0], nomEntit
   };
 }
 
-function computeEntiteSummary(entite, taux) {
-  const r = Number(taux) || 2800;
+function computeEntiteSummary(entite) {
   const enveloppes = Math.max(0, Number(entite.enveloppes) || 0);
   const constrFc = Math.max(0, Number(entite.constructionFc) || 0);
   const constrUsd = Math.max(0, Number(entite.constructionUsd) || 0);
   const normFc = Math.max(0, Number(entite.normalesFc) || 0);
   const normUsd = Math.max(0, Number(entite.normalesUsd) || 0);
 
-  // 1. Sous-total Offrandes de construction + Offrandes normales
+  // Sous-total Construction + Normales (FC et USD séparés)
   const sousTotalCnFc = constrFc + normFc;
   const sousTotalCnUsd = constrUsd + normUsd;
 
-  // 2. Sous-totaux par rubrique nominative
+  // Sous-totaux par rubrique nominative (FC et USD séparés)
   const rubriquesResume = {};
   let totalNomFc = 0;
   let totalNomUsd = 0;
@@ -188,20 +174,17 @@ function computeEntiteSummary(entite, taux) {
     totalNomUsd += rubUsd;
   });
 
-  // 3. Total des sous-totaux de l'entité
+  // Total des sous-totaux de l'entité (FC et USD séparés)
   const totalSousTotauxFc = sousTotalCnFc + totalNomFc;
   const totalSousTotauxUsd = sousTotalCnUsd + totalNomUsd;
 
-  // 4. Dépense de transport
+  // Transport de l'entité (FC et USD séparés, sans conversion)
   const transportFc = Math.max(0, Number(entite.transportFc) || 0);
   const transportUsd = Math.max(0, Number(entite.transportUsd) || 0);
 
-  // 5. Solde de l'entité = Total des sous-totaux - Dépense de transport
+  // Solde de l'entité = Total des sous-totaux - Transport (devise par devise, sans conversion)
   const soldeFc = totalSousTotauxFc - transportFc;
   const soldeUsd = totalSousTotauxUsd - transportUsd;
-
-  const soldeEquivalentFc = soldeFc + toFc(soldeUsd, 'USD', r);
-  const soldeEquivalentUsd = toUsd(soldeFc, 'FC', r) + soldeUsd;
 
   return {
     enveloppes,
@@ -219,14 +202,11 @@ function computeEntiteSummary(entite, taux) {
     transportFc,
     transportUsd,
     soldeFc,
-    soldeUsd,
-    soldeEquivalentFc,
-    soldeEquivalentUsd
+    soldeUsd
   };
 }
 
 function computeSeanceSummary(seance) {
-  const r = Number(seance.taux) || 2800;
   const entites = Array.isArray(seance.entites) ? seance.entites : [];
   const depensesGenerales = Array.isArray(seance.depensesGenerales)
     ? seance.depensesGenerales
@@ -234,50 +214,50 @@ function computeSeanceSummary(seance) {
 
   let totalSoldesEntitesFc = 0;
   let totalSoldesEntitesUsd = 0;
-  let totalSoldesEquivalentFc = 0;
+  let totalTransportFc = 0;
+  let totalTransportUsd = 0;
 
   const entitesCalculees = entites.map((ent) => {
-    const resume = computeEntiteSummary(ent, r);
+    const resume = computeEntiteSummary(ent);
     totalSoldesEntitesFc += resume.soldeFc;
     totalSoldesEntitesUsd += resume.soldeUsd;
-    totalSoldesEquivalentFc += resume.soldeEquivalentFc;
-    return { entite: ent, resume };
+    totalTransportFc += resume.transportFc;
+    totalTransportUsd += resume.transportUsd;
+    return { entite, resume };
   });
 
   let totalDepGenFc = 0;
   let totalDepGenUsd = 0;
-  let totalDepGenEquivalentFc = 0;
 
   depensesGenerales.forEach((d) => {
     const m = Math.max(0, Number(d.montant) || 0);
     if (d.devise === 'USD') {
       totalDepGenUsd += m;
-      totalDepGenEquivalentFc += toFc(m, 'USD', r);
     } else {
       totalDepGenFc += m;
-      totalDepGenEquivalentFc += m;
     }
   });
 
-  // Solde à transférer à la banque = Total des soldes des entités - Total des dépenses générales
+  // Décaissement = dépenses de transport + dépenses générales (FC et USD séparés, sans conversion)
+  const totalDecaissementFc = totalTransportFc + totalDepGenFc;
+  const totalDecaissementUsd = totalTransportUsd + totalDepGenUsd;
+
+  // Solde à transférer à la banque = Total des soldes des entités - Total des dépenses générales (sans conversion)
   const soldeBanqueFc = totalSoldesEntitesFc - totalDepGenFc;
   const soldeBanqueUsd = totalSoldesEntitesUsd - totalDepGenUsd;
-  const soldeBanqueEquivalentFc = totalSoldesEquivalentFc - totalDepGenEquivalentFc;
-  const soldeBanqueEquivalentUsd = toUsd(soldeBanqueEquivalentFc, 'FC', r);
 
   return {
     entitesCalculees,
     totalSoldesEntitesFc,
     totalSoldesEntitesUsd,
-    totalSoldesEquivalentFc,
-    totalSoldesEquivalentUsd: toUsd(totalSoldesEquivalentFc, 'FC', r),
+    totalTransportFc,
+    totalTransportUsd,
     totalDepGenFc,
     totalDepGenUsd,
-    totalDepGenEquivalentFc,
+    totalDecaissementFc,
+    totalDecaissementUsd,
     soldeBanqueFc,
-    soldeBanqueUsd,
-    soldeBanqueEquivalentFc,
-    soldeBanqueEquivalentUsd
+    soldeBanqueUsd
   };
 }
 
@@ -336,7 +316,8 @@ export async function renderDepouillementView(container) {
       province: seance.province || getActiveProvinceSafe(),
       annee: Number(seance.annee) || new Date().getFullYear(),
       dateArchivage: new Date().toISOString(),
-      soldeBanqueEquivalentFc: summary.soldeBanqueEquivalentFc,
+      soldeBanqueFc: summary.soldeBanqueFc,
+      soldeBanqueUsd: summary.soldeBanqueUsd,
       data: seance
     };
 
@@ -367,7 +348,12 @@ export async function renderDepouillementView(container) {
     }
 
     const activeSeance = seances.find((s) => s.id === selectedSeanceId) || seances[0] || null;
-    if (activeSeance && !selectedEntiteId && Array.isArray(activeSeance.entites) && activeSeance.entites[0]) {
+    if (
+      activeSeance &&
+      !selectedEntiteId &&
+      Array.isArray(activeSeance.entites) &&
+      activeSeance.entites[0]
+    ) {
       selectedEntiteId = activeSeance.entites[0].id;
     }
 
@@ -391,15 +377,24 @@ export async function renderDepouillementView(container) {
           </div>
           <div class="kpi-card">
             <div class="kpi-label">Total Soldes Entités</div>
-            <div class="kpi-value">${summary ? formatFc(summary.totalSoldesEquivalentFc) : '0 FC'}</div>
+            <div class="kpi-value" style="font-size:0.95rem;">
+              ${summary ? formatFc(summary.totalSoldesEntitesFc) : '0 FC'}<br>
+              ${summary ? formatUsd(summary.totalSoldesEntitesUsd) : '0,00 $'}
+            </div>
           </div>
           <div class="kpi-card" style="border-left-color:#b45309;">
-            <div class="kpi-label">Dépenses Générales</div>
-            <div class="kpi-value" style="color:#b45309;">${summary ? formatFc(summary.totalDepGenEquivalentFc) : '0 FC'}</div>
+            <div class="kpi-label">Décaissement (Transport + Dép. gén.)</div>
+            <div class="kpi-value" style="color:#b45309;font-size:0.95rem;">
+              Décaissement FC : ${summary ? formatFc(summary.totalDecaissementFc) : '0 FC'}<br>
+              Décaissement USD : ${summary ? formatUsd(summary.totalDecaissementUsd) : '0,00 $'}
+            </div>
           </div>
           <div class="kpi-card" style="border-left-color:#0d8a38;">
             <div class="kpi-label">Solde à Transférer (Banque)</div>
-            <div class="kpi-value" style="color:#0d8a38;">${summary ? formatFc(summary.soldeBanqueEquivalentFc) : '0 FC'}</div>
+            <div class="kpi-value" style="color:#0d8a38;font-size:0.95rem;">
+              ${summary ? formatFc(summary.soldeBanqueFc) : '0 FC'}<br>
+              ${summary ? formatUsd(summary.soldeBanqueUsd) : '0,00 $'}
+            </div>
           </div>
         </div>
 
@@ -487,15 +482,9 @@ export async function renderDepouillementView(container) {
             </div>
           </div>
 
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;">
-            <div class="form-group">
-              <label for="s-responsable">Responsable de séance</label>
-              <input id="s-responsable" type="text" required placeholder="Nom du responsable" />
-            </div>
-            <div class="form-group">
-              <label for="s-taux">Taux du jour (FC pour 1 USD)</label>
-              <input id="s-taux" type="number" min="1" step="1" value="2800" required />
-            </div>
+          <div class="form-group">
+            <label for="s-responsable">Responsable de séance</label>
+            <input id="s-responsable" type="text" required placeholder="Nom du responsable" />
           </div>
 
           <button type="submit" class="btn-primary">➕ Créer la séance de dépouillement</button>
@@ -516,8 +505,7 @@ export async function renderDepouillementView(container) {
             <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:12px;">
               Phase : <strong>${escapeHtml(activeSeance.phase || '')}</strong> •
               Date : <strong>${escapeHtml(activeSeance.date || '')}</strong> •
-              Responsable : <strong>${escapeHtml(activeSeance.responsable || '—')}</strong> •
-              Taux : <strong>${formatNum(activeSeance.taux || 2800)} FC/$</strong>
+              Responsable : <strong>${escapeHtml(activeSeance.responsable || '—')}</strong>
             </div>
 
             <form id="form-add-entite-seance" class="form-stack" style="padding:10px;border:1px solid var(--border-color);border-radius:8px;background:#f9fafb;margin-bottom:12px;">
@@ -560,15 +548,15 @@ export async function renderDepouillementView(container) {
                               <td><strong>${escapeHtml(label)}</strong></td>
                               <td style="font-size:0.78rem;">
                                 ${formatFc(resume.totalSousTotauxFc)}<br>
-                                <span style="color:var(--text-muted);">${formatUsd(resume.totalSousTotauxUsd)}</span>
+                                ${formatUsd(resume.totalSousTotauxUsd)}
                               </td>
                               <td style="font-size:0.78rem;color:#b45309;">
                                 ${formatFc(resume.transportFc)}<br>
-                                <span style="color:var(--text-muted);">${formatUsd(resume.transportUsd)}</span>
+                                ${formatUsd(resume.transportUsd)}
                               </td>
                               <td style="font-size:0.78rem;">
                                 <strong style="color:#0a6e2c;">${formatFc(resume.soldeFc)}</strong><br>
-                                <span style="color:var(--text-muted);">${formatUsd(resume.soldeUsd)}</span>
+                                <strong style="color:#0a6e2c;">${formatUsd(resume.soldeUsd)}</strong>
                               </td>
                               <td>
                                 <button type="button" class="btn-primary btn-open-entite" data-id="${escapeHtml(entite.id)}" style="padding:5px 8px;font-size:0.75rem;">
@@ -601,7 +589,6 @@ export async function renderDepouillementView(container) {
       const phase = f['s-phase'].value.trim();
       const date = f['s-date'].value;
       const responsable = f['s-responsable'].value.trim();
-      const taux = Math.max(1, Number(f['s-taux'].value) || 2800);
 
       if (!mois || !phase || !date || !responsable) {
         notifyUser('Veuillez renseigner tous les champs de la séance.', 'error');
@@ -615,7 +602,6 @@ export async function renderDepouillementView(container) {
         phase,
         date,
         responsable,
-        taux,
         statut: 'Ouverte',
         entites: [],
         depensesGenerales: [],
@@ -696,8 +682,7 @@ export async function renderDepouillementView(container) {
       activeSeance.entites.find((e) => e.id === selectedEntiteId) || activeSeance.entites[0];
     selectedEntiteId = currentEntite.id;
 
-    const taux = Number(activeSeance.taux) || 2800;
-    const resume = computeEntiteSummary(currentEntite, taux);
+    const resume = computeEntiteSummary(currentEntite);
 
     const entiteSelectorHtml = activeSeance.entites
       .map(
@@ -738,7 +723,6 @@ export async function renderDepouillementView(container) {
           </select>
         </div>
 
-        <!-- Étape 1 à 4 : Enveloppes, Construction, Normales, Sous-total -->
         <form id="form-entite-bases" class="form-stack">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;">
             <div class="form-group">
@@ -767,15 +751,15 @@ export async function renderDepouillementView(container) {
           </div>
 
           <div style="padding:8px 12px;border-radius:8px;background:#f0fdf4;border:1px solid #bbf7d0;font-size:0.8rem;color:#14532d;">
-            <strong>4. Sous-total (Construction + Normales) :</strong>
-            <strong>${formatFc(resume.sousTotalCnFc)}</strong> et <strong>${formatUsd(resume.sousTotalCnUsd)}</strong>
+            <strong>4. Sous-total (Construction + Normales) :</strong><br>
+            Francs : <strong>${formatFc(resume.sousTotalCnFc)}</strong><br>
+            Dollars : <strong>${formatUsd(resume.sousTotalCnUsd)}</strong>
           </div>
 
           <button type="submit" class="btn-secondary">💾 Enregistrer Enveloppes, Construction & Normales</button>
         </form>
       </div>
 
-      <!-- Étape 5 : Offrandes Nominatives par Rubrique + Sous-totaux FC & USD -->
       <div class="card">
         <h3 style="margin:0 0 8px;">5. Offrandes Nominatives par Rubrique</h3>
         <div class="tabs-bar" style="flex-wrap:wrap;gap:6px;margin-bottom:10px;">
@@ -841,17 +825,18 @@ export async function renderDepouillementView(container) {
         </div>
 
         <div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:#f8fafc;border:1px solid var(--border-color);font-size:0.8rem;">
-          <strong>Sous-total ${escapeHtml(activeRubriqueNom)} :</strong>
-          <strong>${formatFc(currentRubResume.fc)}</strong> • <strong>${formatUsd(currentRubResume.usd)}</strong>
+          <strong>Sous-total ${escapeHtml(activeRubriqueNom)} :</strong><br>
+          Francs : <strong>${formatFc(currentRubResume.fc)}</strong><br>
+          Dollars : <strong>${formatUsd(currentRubResume.usd)}</strong>
         </div>
       </div>
 
-      <!-- Étape 6 à 8 : Total des sous-totaux, Transport, Solde de l'entité -->
       <div class="card">
         <h3 style="margin:0 0 8px;">6 à 8. Total des Sous-totaux, Transport & Solde de l'Entité</h3>
         <div style="font-size:0.82rem;margin-bottom:10px;">
-          <strong>6. Total des sous-totaux :</strong>
-          <strong>${formatFc(resume.totalSousTotauxFc)}</strong> • <strong>${formatUsd(resume.totalSousTotauxUsd)}</strong>
+          <strong>6. Total des sous-totaux :</strong><br>
+          Francs : <strong>${formatFc(resume.totalSousTotauxFc)}</strong><br>
+          Dollars : <strong>${formatUsd(resume.totalSousTotauxUsd)}</strong>
         </div>
 
         <form id="form-entite-transport" class="form-stack">
@@ -870,7 +855,8 @@ export async function renderDepouillementView(container) {
 
         <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:#ecfdf5;border:1px solid #a7f3d0;font-size:0.84rem;color:#065f46;">
           <strong>8. Solde de l'entité (Total sous-totaux − Transport) :</strong><br>
-          En FC : <strong>${formatFc(resume.soldeFc)}</strong> • En USD : <strong>${formatUsd(resume.soldeUsd)}</strong>
+          Solde en francs : <strong>${formatFc(resume.soldeFc)}</strong><br>
+          Solde en dollars : <strong>${formatUsd(resume.soldeUsd)}</strong>
         </div>
       </div>
     `;
@@ -981,9 +967,9 @@ export async function renderDepouillementView(container) {
       <div class="card">
         <h3 style="margin:0 0 8px;">Total des Soldes des Entités & Dépenses Générales</h3>
         <div style="font-size:0.82rem;margin-bottom:10px;">
-          <strong>Total des soldes des entités :</strong>
-          <strong>${formatFc(summary.totalSoldesEquivalentFc)}</strong>
-          (${formatFc(summary.totalSoldesEntitesFc)} • ${formatUsd(summary.totalSoldesEntitesUsd)})
+          <strong>Total des soldes des entités :</strong><br>
+          Francs : <strong>${formatFc(summary.totalSoldesEntitesFc)}</strong><br>
+          Dollars : <strong>${formatUsd(summary.totalSoldesEntitesUsd)}</strong>
         </div>
 
         <form id="form-add-dep-gen" class="form-stack">
@@ -1047,10 +1033,16 @@ export async function renderDepouillementView(container) {
           </table>
         </div>
 
-        <div style="margin-top:12px;padding:10px 12px;border-radius:8px;background:#f0fdf4;border:1px solid #bbf7d0;font-size:0.86rem;color:#14532d;">
-          <strong>Solde à transférer à la banque (Total soldes entités − Total dépenses générales) :</strong><br>
-          Équivalent FC : <strong style="color:#0a6e2c;">${formatFc(summary.soldeBanqueEquivalentFc)}</strong> •
-          Équivalent USD : <strong style="color:#0a6e2c;">${formatUsd(summary.soldeBanqueEquivalentUsd)}</strong>
+        <div style="margin-top:12px;padding:10px 12px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;font-size:0.84rem;color:#92400e;">
+          <strong>Décaissement (Transport + Dépenses générales — sans conversion) :</strong><br>
+          Décaissement en francs : <strong>${formatFc(summary.totalDecaissementFc)}</strong><br>
+          Décaissement en dollars : <strong>${formatUsd(summary.totalDecaissementUsd)}</strong>
+        </div>
+
+        <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:#f0fdf4;border:1px solid #bbf7d0;font-size:0.86rem;color:#14532d;">
+          <strong>Solde à transférer à la banque (sans conversion) :</strong><br>
+          Banque en francs : <strong style="color:#0a6e2c;">${formatFc(summary.soldeBanqueFc)}</strong><br>
+          Banque en dollars : <strong style="color:#0a6e2c;">${formatUsd(summary.soldeBanqueUsd)}</strong>
         </div>
       </div>
     `;
@@ -1155,12 +1147,13 @@ export async function renderDepouillementView(container) {
         ${entitesBlocksHtml || '<p style="color:var(--text-muted);">Aucune entité saisie.</p>'}
 
         <div style="padding:10px 12px;border-radius:8px;background:#f8fafc;border:1px solid var(--border-color);font-size:0.84rem;margin-bottom:12px;">
-          <strong>Total des soldes des entités :</strong>
-          <strong>${formatFc(summary.totalSoldesEquivalentFc)}</strong> (${formatUsd(summary.totalSoldesEquivalentUsd)})
+          <strong>Total des soldes des entités :</strong><br>
+          Francs : <strong>${formatFc(summary.totalSoldesEntitesFc)}</strong><br>
+          Dollars : <strong>${formatUsd(summary.totalSoldesEntitesUsd)}</strong>
         </div>
 
         <h4 style="margin:0 0 8px;">Dépenses Générales (Motif & Montant)</h4>
-        <div class="table-responsive" style="margin-bottom:12px;">
+        <div class="table-responsive" style="margin-bottom:10px;">
           <table>
             <thead>
               <tr>
@@ -1174,9 +1167,16 @@ export async function renderDepouillementView(container) {
           </table>
         </div>
 
+        <div style="padding:10px 12px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;font-size:0.84rem;color:#92400e;margin-bottom:12px;">
+          <strong>Décaissement (Transport + Dépenses générales — sans conversion) :</strong><br>
+          Décaissement en francs : <strong>${formatFc(summary.totalDecaissementFc)}</strong><br>
+          Décaissement en dollars : <strong>${formatUsd(summary.totalDecaissementUsd)}</strong>
+        </div>
+
         <div style="padding:12px;border-radius:8px;background:#ecfdf5;border:1px solid #a7f3d0;font-size:0.88rem;color:#065f46;">
-          <strong>Solde à transférer à la banque :</strong><br>
-          <strong>${formatFc(summary.soldeBanqueEquivalentFc)}</strong> (${formatUsd(summary.soldeBanqueEquivalentUsd)})
+          <strong>Solde à transférer à la banque (sans conversion) :</strong><br>
+          Banque en francs : <strong>${formatFc(summary.soldeBanqueFc)}</strong><br>
+          Banque en dollars : <strong>${formatUsd(summary.soldeBanqueUsd)}</strong>
         </div>
       </div>
     `;
