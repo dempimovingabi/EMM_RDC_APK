@@ -91,7 +91,12 @@ async function getFirestoreBridge() {
       import('../../config/constants.js').catch(() => null),
       import('../../services/firestore.service.js').catch(() => null)
     ]);
-    if (constantsMod?.COLLECTIONS && fsMod?.listDocuments && fsMod?.setDocument && fsMod?.deleteDocument) {
+    if (
+      constantsMod?.COLLECTIONS &&
+      fsMod?.listDocuments &&
+      fsMod?.setDocument &&
+      fsMod?.deleteDocument
+    ) {
       return {
         COLLECTIONS: constantsMod.COLLECTIONS,
         listDocuments: fsMod.listDocuments,
@@ -125,6 +130,9 @@ function notifyUser(msg, type = 'info') {
 export async function renderFinanceView(container) {
   let activeTab = 'candidats';
   let filterMotif = 'ALL';
+  let filterTypeEntite = 'ALL';
+  let searchQuery = '';
+  let filterVerseCandidatId = 'ALL';
   let editingCandidatId = null;
   let preselectedVerseCandidatId = '';
 
@@ -138,7 +146,9 @@ export async function renderFinanceView(container) {
       if (Array.isArray(remoteList) && remoteList.length > 0) {
         const mergedMap = new Map();
         localList.forEach((item) => mergedMap.set(item.id, item));
-        remoteList.forEach((item) => mergedMap.set(item.id, { ...mergedMap.get(item.id), ...item }));
+        remoteList.forEach((item) =>
+          mergedMap.set(item.id, { ...mergedMap.get(item.id), ...item })
+        );
         return Array.from(mergedMap.values()).filter((c) => !c.archived);
       }
     } catch (_) {}
@@ -153,7 +163,9 @@ export async function renderFinanceView(container) {
       if (Array.isArray(remoteList) && remoteList.length > 0) {
         const mergedMap = new Map();
         localList.forEach((item) => mergedMap.set(item.id, item));
-        remoteList.forEach((item) => mergedMap.set(item.id, { ...mergedMap.get(item.id), ...item }));
+        remoteList.forEach((item) =>
+          mergedMap.set(item.id, { ...mergedMap.get(item.id), ...item })
+        );
         return Array.from(mergedMap.values()).filter((v) => !v.archived);
       }
     } catch (_) {}
@@ -161,7 +173,8 @@ export async function renderFinanceView(container) {
   }
 
   async function saveCandidat(record, existingId = null) {
-    const id = existingId || record.id || `cand_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const id =
+      existingId || record.id || `cand_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const fullRecord = { ...record, id, archived: false };
 
     const localList = readLocalList(STORAGE_CANDIDATS_KEY);
@@ -204,8 +217,15 @@ export async function renderFinanceView(container) {
 
     if (bridge) {
       try {
-        await bridge.setDocument(bridge.COLLECTIONS.ARCHIVES, archivedItem.id, archivedItem, { merge: true });
-        await bridge.setDocument(bridge.COLLECTIONS.CANDIDATS, candidat.id, { archived: true }, { merge: true });
+        await bridge.setDocument(bridge.COLLECTIONS.ARCHIVES, archivedItem.id, archivedItem, {
+          merge: true
+        });
+        await bridge.setDocument(
+          bridge.COLLECTIONS.CANDIDATS,
+          candidat.id,
+          { archived: true },
+          { merge: true }
+        );
       } catch (_) {}
     }
   }
@@ -253,7 +273,7 @@ export async function renderFinanceView(container) {
     const candidats = allCandidats.filter((c) => !c.province || c.province === province);
     const candidatIds = new Set(candidats.map((c) => c.id));
     const versements = allVersements.filter(
-      (v) => (!v.province || v.province === province) || (v.candidatId && candidatIds.has(v.candidatId))
+      (v) => !v.province || v.province === province || (v.candidatId && candidatIds.has(v.candidatId))
     );
 
     const paidByCandidat = {};
@@ -335,18 +355,51 @@ export async function renderFinanceView(container) {
     if (!host) return;
 
     if (activeTab === 'candidats') {
-      await renderCandidatsTab(host, province, candidats, paidByCandidat, motifOptionsHtml, typeEntiteOptionsHtml);
+      await renderCandidatsTab(
+        host,
+        province,
+        candidats,
+        paidByCandidat,
+        motifOptionsHtml,
+        typeEntiteOptionsHtml
+      );
     } else if (activeTab === 'versements') {
-      await renderVersementsTab(host, province, candidats, versements, motifOptionsHtml, typeEntiteOptionsHtml);
+      await renderVersementsTab(
+        host,
+        province,
+        candidats,
+        versements,
+        motifOptionsHtml,
+        typeEntiteOptionsHtml
+      );
     } else if (activeTab === 'releves') {
       renderRelevesTab(host, province, candidats, paidByCandidat);
     }
   };
 
-  async function renderCandidatsTab(host, province, candidats, paidByCandidat, motifOptionsHtml, typeEntiteOptionsHtml) {
-    const editingCand = editingCandidatId ? candidats.find((c) => c.id === editingCandidatId) || null : null;
-    const filtered =
-      filterMotif === 'ALL' ? candidats : candidats.filter((c) => c.motif === filterMotif);
+  async function renderCandidatsTab(
+    host,
+    province,
+    candidats,
+    paidByCandidat,
+    motifOptionsHtml,
+    typeEntiteOptionsHtml
+  ) {
+    const editingCand = editingCandidatId
+      ? candidats.find((c) => c.id === editingCandidatId) || null
+      : null;
+
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = candidats.filter((c) => {
+      const matchMotif = filterMotif === 'ALL' || c.motif === filterMotif;
+      const matchType = filterTypeEntite === 'ALL' || c.typeEntite === filterTypeEntite;
+      const matchQuery =
+        !q ||
+        String(c.nom || '').toLowerCase().includes(q) ||
+        String(c.entite || '').toLowerCase().includes(q) ||
+        String(c.typeEntite || '').toLowerCase().includes(q);
+      return matchMotif && matchType && matchQuery;
+    });
 
     host.innerHTML = `
       <div class="card">
@@ -406,12 +459,27 @@ export async function renderFinanceView(container) {
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
           <h3 style="margin:0;">Candidats Membres enregistrés (${filtered.length})</h3>
-          <select id="filter-motif-candidat" aria-label="Filtrer par motif" style="max-width:210px;">
-            <option value="ALL" ${filterMotif === 'ALL' ? 'selected' : ''}>Tous les motifs (7)</option>
-            ${MOTIFS_VERSEMENT.map(
-              (m) => `<option value="${escapeHtml(m)}" ${filterMotif === m ? 'selected' : ''}>${escapeHtml(m)}</option>`
-            ).join('')}
-          </select>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <input
+              id="search-candidat"
+              type="search"
+              value="${escapeHtml(searchQuery)}"
+              placeholder="Rechercher candidat / entité..."
+              style="max-width:190px;padding:6px 10px;border-radius:8px;border:1px solid var(--border-color);"
+            />
+            <select id="filter-type-entite-candidat" aria-label="Filtrer par type d'entité" style="max-width:185px;">
+              <option value="ALL" ${filterTypeEntite === 'ALL' ? 'selected' : ''}>Toutes les entités (5)</option>
+              ${TYPES_ENTITE.map(
+                (t) => `<option value="${escapeHtml(t)}" ${filterTypeEntite === t ? 'selected' : ''}>${escapeHtml(t)}</option>`
+              ).join('')}
+            </select>
+            <select id="filter-motif-candidat" aria-label="Filtrer par motif" style="max-width:185px;">
+              <option value="ALL" ${filterMotif === 'ALL' ? 'selected' : ''}>Tous les motifs (7)</option>
+              ${MOTIFS_VERSEMENT.map(
+                (m) => `<option value="${escapeHtml(m)}" ${filterMotif === m ? 'selected' : ''}>${escapeHTML_SAFE(m)}</option>`
+              ).join('')}
+            </select>
+          </div>
         </div>
 
         <div class="table-responsive">
@@ -419,7 +487,7 @@ export async function renderFinanceView(container) {
             <thead>
               <tr>
                 <th>Candidat & Entité</th>
-                <th>Motif</th>
+                <th>Motif & Statut</th>
                 <th>Prévu / Versé / Reste</th>
                 <th>Actions</th>
               </tr>
@@ -427,12 +495,13 @@ export async function renderFinanceView(container) {
             <tbody>
               ${
                 filtered.length === 0
-                  ? `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Aucun candidat membre enregistré.</td></tr>`
+                  ? `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Aucun candidat membre enregistré pour ce filtre.</td></tr>`
                   : filtered
                       .map((c) => {
                         const prevu = Number(c.montantPrevuUsd) || 0;
                         const verse = paidByCandidat[c.id] || 0;
                         const reste = Math.max(0, prevu - verse);
+                        const isSolde = prevu > 0 && reste <= 0.005;
                         const entiteText = formatEntiteLabel(c.typeEntite, c.entite);
                         return `
                         <tr>
@@ -440,7 +509,12 @@ export async function renderFinanceView(container) {
                             <strong>${escapeHtml(c.nom || '')}</strong>
                             <br><span style="font-size:0.75rem;color:var(--text-muted);">Entité : ${escapeHtml(entiteText)}</span>
                           </td>
-                          <td><span class="badge">${escapeHtml(c.motif || '')}</span></td>
+                          <td>
+                            <span class="badge">${escapeHtml(c.motif || '')}</span>
+                            <br><span style="font-size:0.72rem;font-weight:700;color:${isSolde ? '#0d8a38' : '#b45309'};">
+                              ${isSolde ? '✓ Soldé' : '⏳ En cours'}
+                            </span>
+                          </td>
                           <td style="font-size:0.78rem;">
                             Prévu : <strong>${formatUsd(prevu)}</strong><br>
                             Versé : <strong style="color:#0d8a38;">${formatUsd(verse)}</strong><br>
@@ -465,12 +539,26 @@ export async function renderFinanceView(container) {
       </div>
     `;
 
+    function escapeHTML_SAFE(val) {
+      return escapeHtml(val);
+    }
+
     if (editingCand) {
       const mSel = host.querySelector('#cand-motif');
       const tSel = host.querySelector('#cand-type-entite');
       if (mSel && editingCand.motif) mSel.value = editingCand.motif;
       if (tSel && editingCand.typeEntite) tSel.value = editingCand.typeEntite;
     }
+
+    host.querySelector('#search-candidat')?.addEventListener('input', async (e) => {
+      searchQuery = e.target.value;
+      await render();
+    });
+
+    host.querySelector('#filter-type-entite-candidat')?.addEventListener('change', async (e) => {
+      filterTypeEntite = e.target.value;
+      await render();
+    });
 
     host.querySelector('#filter-motif-candidat')?.addEventListener('change', async (e) => {
       filterMotif = e.target.value;
@@ -528,6 +616,7 @@ export async function renderFinanceView(container) {
     host.querySelectorAll('.btn-verser-cand').forEach((btn) => {
       btn.addEventListener('click', async () => {
         preselectedVerseCandidatId = btn.dataset.id;
+        filterVerseCandidatId = btn.dataset.id;
         activeTab = 'versements';
         await render();
       });
@@ -555,7 +644,14 @@ export async function renderFinanceView(container) {
     });
   }
 
-  async function renderVersementsTab(host, province, candidats, versements, motifOptionsHtml, typeEntiteOptionsHtml) {
+  async function renderVersementsTab(
+    host,
+    province,
+    candidats,
+    versements,
+    motifOptionsHtml,
+    typeEntiteOptionsHtml
+  ) {
     const candidatOptions = candidats
       .map((c) => {
         const entiteText = formatEntiteLabel(c.typeEntite, c.entite);
@@ -567,6 +663,11 @@ export async function renderFinanceView(container) {
         )}">${escapeHtml(c.nom || '')} (${escapeHtml(c.motif || '')} • ${escapeHtml(entiteText)})</option>`;
       })
       .join('');
+
+    const visibleVersements =
+      filterVerseCandidatId === 'ALL'
+        ? versements
+        : versements.filter((v) => v.candidatId === filterVerseCandidatId);
 
     const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -637,7 +738,21 @@ export async function renderFinanceView(container) {
       </div>
 
       <div class="card">
-        <h3 style="margin:0 0 10px;">Historique des Versements (${versements.length})</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+          <h3 style="margin:0;">Historique des Versements (${visibleVersements.length})</h3>
+          <select id="filter-verse-candidat" aria-label="Filtrer par candidat" style="max-width:220px;">
+            <option value="ALL" ${filterVerseCandidatId === 'ALL' ? 'selected' : ''}>Tous les candidats membres</option>
+            ${candidats
+              .map(
+                (c) =>
+                  `<option value="${escapeHtml(c.id)}" ${
+                    filterVerseCandidatId === c.id ? 'selected' : ''
+                  }>${escapeHtml(c.nom || '')}</option>`
+              )
+              .join('')}
+          </select>
+        </div>
+
         <div class="table-responsive">
           <table>
             <thead>
@@ -651,9 +766,9 @@ export async function renderFinanceView(container) {
             </thead>
             <tbody>
               ${
-                versements.length === 0
+                visibleVersements.length === 0
                   ? `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Aucun versement enregistré.</td></tr>`
-                  : versements
+                  : visibleVersements
                       .map((v) => {
                         const cand = candidats.find((c) => c.id === v.candidatId);
                         const usdVal =
@@ -713,6 +828,11 @@ export async function renderFinanceView(container) {
     }
 
     selCand?.addEventListener('change', syncFromSelectedCandidat);
+
+    host.querySelector('#filter-verse-candidat')?.addEventListener('change', async (e) => {
+      filterVerseCandidatId = e.target.value;
+      await render();
+    });
 
     host.querySelector('#form-add-versement')?.addEventListener('submit', async (e) => {
       e.preventDefault();
