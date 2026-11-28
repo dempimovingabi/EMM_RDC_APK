@@ -1,8 +1,8 @@
 // sw.js
-// Service Worker PWA — EMM RD CONGO (Cache v10 & Mode Hors Ligne résilient)
+// Service Worker PWA — EMM RD CONGO (Cache v11 & Mode Hors Ligne résilient)
 
-const CACHE_NAME = 'emm-rdcongo-v10';
-const DYNAMIC_CACHE = 'emm-rdcongo-dyn-v10';
+const CACHE_NAME = 'emm-rdcongo-v11';
+const DYNAMIC_CACHE = 'emm-rdcongo-dyn-v11';
 
 const CORE_ASSETS = [
   './',
@@ -28,7 +28,8 @@ const CORE_ASSETS = [
   './js/modules/auth/auth.controller.js',
   './js/modules/dashboard/dashboard.view.js',
   './js/modules/administration/administration.view.js',
-  './js/modules/tutoriels/tutoriels.view.js'
+  './js/modules/tutoriels/tutoriels.view.js',
+  './js/modules/depouillement/depouilement.view.js'
 ];
 
 self.addEventListener('install', (event) => {
