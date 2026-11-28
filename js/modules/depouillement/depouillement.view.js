@@ -22,6 +22,7 @@ export const RUBRIQUES_NOMINATIVES = [
 
 const STORAGE_SEANCES_KEY = 'emm_depouillement_seances_v3';
 const STORAGE_ARCHIVES_KEY = 'emm_archives_v1';
+const STORAGE_DELETED_IDS_KEY = 'emm_depouillement_deleted_ids_v1';
 
 function escapeHtml(str) {
   return String(str ?? '')
@@ -75,6 +76,22 @@ function writeLocalList(key, arr) {
   } catch (_) {
     return false;
   }
+}
+
+function getDeletedIdsSet() {
+  return new Set(readLocalList(STORAGE_DELETED_IDS_KEY).map((x) => String(x)));
+}
+
+function markIdDeleted(id) {
+  const set = getDeletedIdsSet();
+  set.add(String(id));
+  writeLocalList(STORAGE_DELETED_IDS_KEY, Array.from(set));
+}
+
+function unmarkIdDeleted(id) {
+  const set = getDeletedIdsSet();
+  set.delete(String(id));
+  writeLocalList(STORAGE_DELETED_IDS_KEY, Array.from(set));
 }
 
 async function getFirestoreBridge() {
@@ -271,31 +288,45 @@ export async function renderDepouillementView(container) {
   let editingSeanceId = null;
   let selectedEntiteId = '';
   let activeRubriqueNom = RUBRIQUES_NOMINATIVES[0];
+  let selectedForDeleteIds = new Set();
 
   const bridge = await getFirestoreBridge();
   const colSeances = bridge?.COLLECTIONS?.DEPOUILLEMENTS || 'depouillements';
   const colArchives = bridge?.COLLECTIONS?.ARCHIVES || 'archives';
 
   function getLocalSeances() {
-    return readLocalList(STORAGE_SEANCES_KEY).filter((s) => s && !s.archived);
+    const deletedSet = getDeletedIdsSet();
+    return readLocalList(STORAGE_SEANCES_KEY).filter(
+      (s) => s && s.id && !s.archived && !deletedSet.has(String(s.id))
+    );
   }
 
   async function loadSeances() {
-    const localList = readLocalList(STORAGE_SEANCES_KEY);
-    if (!bridge) return localList.filter((s) => s && !s.archived);
+    const deletedSet = getDeletedIdsSet();
+    const localList = readLocalList(STORAGE_SEANCES_KEY).filter(
+      (s) => s && s.id && !deletedSet.has(String(s.id))
+    );
+
+    if (!bridge) {
+      return localList.filter((s) => !s.archived);
+    }
+
     try {
       const remoteList = await bridge.listDocuments(colSeances);
-      if (Array.isArray(remoteList) && remoteList.length > 0) {
+      if (Array.isArray(remoteList)) {
         const map = new Map();
         localList.forEach((item) => {
-          if (item?.id) map.set(item.id, item);
+          if (item?.id && !deletedSet.has(String(item.id))) {
+            map.set(String(item.id), item);
+          }
         });
         remoteList.forEach((item) => {
-          if (item?.id) {
-            const prev = map.get(item.id) || {};
+          if (item?.id && !deletedSet.has(String(item.id))) {
+            const idStr = String(item.id);
+            const prev = map.get(idStr) || {};
             const localEntites = Array.isArray(prev.entites) ? prev.entites : [];
             const remoteEntites = Array.isArray(item.entites) ? item.entites : [];
-            map.set(item.id, {
+            map.set(idStr, {
               ...prev,
               ...item,
               entites: remoteEntites.length > 0 ? remoteEntites : localEntites
@@ -305,11 +336,14 @@ export async function renderDepouillementView(container) {
         return Array.from(map.values()).filter((s) => s && !s.archived);
       }
     } catch (_) {}
-    return localList.filter((s) => s && !s.archived);
+
+    return localList.filter((s) => !s.archived);
   }
 
   async function persistSeance(seance) {
-    const id = seance.id || `seance_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const id = String(seance.id || `seance_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`);
+    unmarkIdDeleted(id);
+
     const full = {
       ...seance,
       id,
@@ -320,7 +354,7 @@ export async function renderDepouillementView(container) {
     };
 
     const allStored = readLocalList(STORAGE_SEANCES_KEY);
-    const idx = allStored.findIndex((s) => s && s.id === id);
+    const idx = allStored.findIndex((s) => s && String(s.id) === id);
     if (idx >= 0) {
       allStored[idx] = { ...allStored[idx], ...full };
     } else {
@@ -337,16 +371,49 @@ export async function renderDepouillementView(container) {
   }
 
   async function deleteSeance(id) {
-    const allStored = readLocalList(STORAGE_SEANCES_KEY).filter((s) => s && s.id !== id);
+    const idStr = String(id);
+    markIdDeleted(idStr);
+    selectedForDeleteIds.delete(idStr);
+
+    const allStored = readLocalList(STORAGE_SEANCES_KEY).filter(
+      (s) => s && String(s.id) !== idStr
+    );
     writeLocalList(STORAGE_SEANCES_KEY, allStored);
+
     if (bridge) {
       try {
-        await bridge.deleteDocument(colSeances, id);
+        await bridge.deleteDocument(colSeances, idStr);
       } catch (_) {}
     }
   }
 
+  async function deleteMultipleSeances(idsArray) {
+    const uniqueIds = Array.from(new Set(idsArray.map((x) => String(x))));
+    uniqueIds.forEach((idStr) => {
+      markIdDeleted(idStr);
+      selectedForDeleteIds.delete(idStr);
+    });
+
+    const idSet = new Set(uniqueIds);
+    const allStored = readLocalList(STORAGE_SEANCES_KEY).filter(
+      (s) => s && !idSet.has(String(s.id))
+    );
+    writeLocalList(STORAGE_SEANCES_KEY, allStored);
+
+    if (bridge) {
+      for (const idStr of uniqueIds) {
+        try {
+          await bridge.deleteDocument(colSeances, idStr);
+        } catch (_) {}
+      }
+    }
+  }
+
   async function archiveSeance(seance) {
+    const idStr = String(seance.id);
+    markIdDeleted(idStr);
+    selectedForDeleteIds.delete(idStr);
+
     const summary = computeSeanceSummary(seance);
     const archivedItem = {
       id: `arch_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -357,22 +424,22 @@ export async function renderDepouillementView(container) {
       dateArchivage: new Date().toISOString(),
       soldeBanqueFc: summary.soldeBanqueFc,
       soldeBanqueUsd: summary.soldeBanqueUsd,
-      data: seance
+      data: { ...seance, archived: true }
     };
 
     const archives = readLocalList(STORAGE_ARCHIVES_KEY);
     archives.unshift(archivedItem);
     writeLocalList(STORAGE_ARCHIVES_KEY, archives);
 
-    const localList = readLocalList(STORAGE_SEANCES_KEY).map((s) =>
-      s && s.id === seance.id ? { ...s, archived: true } : s
+    const localList = readLocalList(STORAGE_SEANCES_KEY).filter(
+      (s) => s && String(s.id) !== idStr
     );
     writeLocalList(STORAGE_SEANCES_KEY, localList);
 
     if (bridge) {
       try {
         await bridge.setDocument(colArchives, archivedItem.id, archivedItem, { merge: true });
-        await bridge.setDocument(colSeances, seance.id, { archived: true }, { merge: true });
+        await bridge.deleteDocument(colSeances, idStr);
       } catch (_) {}
     }
   }
@@ -383,21 +450,28 @@ export async function renderDepouillementView(container) {
       const allSeances = await loadSeances();
       const seances = allSeances.filter((s) => !s.province || s.province === province);
 
-      if (selectedSeanceId && !seances.some((s) => s.id === selectedSeanceId)) {
+      // Nettoyer les IDs cochés qui n'existent plus
+      const validIds = new Set(seances.map((s) => String(s.id)));
+      selectedForDeleteIds = new Set(
+        Array.from(selectedForDeleteIds).filter((id) => validIds.has(String(id)))
+      );
+
+      if (selectedSeanceId && !seances.some((s) => String(s.id) === String(selectedSeanceId))) {
         selectedSeanceId = '';
       }
       if (!selectedSeanceId && seances[0]) {
-        selectedSeanceId = seances[0].id;
+        selectedSeanceId = String(seances[0].id);
       }
 
-      const activeSeance = seances.find((s) => s.id === selectedSeanceId) || seances[0] || null;
+      const activeSeance =
+        seances.find((s) => String(s.id) === String(selectedSeanceId)) || seances[0] || null;
       const entitesList = Array.isArray(activeSeance?.entites) ? activeSeance.entites : [];
 
-      if (selectedEntiteId && !entitesList.some((e) => e.id === selectedEntiteId)) {
+      if (selectedEntiteId && !entitesList.some((e) => String(e.id) === String(selectedEntiteId))) {
         selectedEntiteId = '';
       }
       if (!selectedEntiteId && entitesList[0]) {
-        selectedEntiteId = entitesList[0].id;
+        selectedEntiteId = String(entitesList[0].id);
       }
 
       const summary = activeSeance ? computeSeanceSummary(activeSeance) : null;
@@ -497,14 +571,14 @@ export async function renderDepouillementView(container) {
     const todayStr = now.toISOString().slice(0, 10);
 
     const editingSeance = editingSeanceId
-      ? seances.find((s) => s.id === editingSeanceId) || null
+      ? seances.find((s) => String(s.id) === String(editingSeanceId)) || null
       : null;
 
     const seanceOptions = seances
       .map(
         (s) =>
           `<option value="${escapeHtml(s.id)}" ${
-            activeSeance && s.id === activeSeance.id ? 'selected' : ''
+            activeSeance && String(s.id) === String(activeSeance.id) ? 'selected' : ''
           }>${escapeHtml(`${s.mois || ''} ${s.annee || ''} — ${s.phase || ''} (${s.statut || 'Ouverte'})`)}</option>`
       )
       .join('');
@@ -514,6 +588,8 @@ export async function renderDepouillementView(container) {
     ).join('');
 
     const currentSummary = activeSeance ? computeSeanceSummary(activeSeance) : null;
+    const allChecked =
+      seances.length > 0 && seances.every((s) => selectedForDeleteIds.has(String(s.id)));
 
     host.innerHTML = `
       <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
@@ -559,11 +635,27 @@ export async function renderDepouillementView(container) {
       </div>
 
       <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
-        <h3 style="margin:0 0 10px;color:#0f172a;">Liste des Séances (${seances.length})</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+          <h3 style="margin:0;color:#0f172a;">Liste des Séances (${seances.length})</h3>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            <button type="button" id="btn-toggle-select-all" class="btn-secondary" style="padding:5px 9px;font-size:0.76rem;">
+              ${allChecked ? '☐ Tout décocher' : '☑️ Tout cocher'}
+            </button>
+            <button
+              type="button"
+              id="btn-delete-selected-seances"
+              style="padding:5px 10px;font-size:0.76rem;border-radius:8px;border:none;background:#b91c1c;color:#ffffff;font-weight:700;cursor:pointer;"
+            >
+              🗑️ Supprimer la sélection (${selectedForDeleteIds.size})
+            </button>
+          </div>
+        </div>
+
         <div class="table-responsive">
           <table>
             <thead>
               <tr>
+                <th style="width:36px;color:#0f172a;">Sel.</th>
                 <th style="color:#0f172a;">Séance & Phase</th>
                 <th style="color:#0f172a;">Responsable</th>
                 <th style="color:#0f172a;">Statut</th>
@@ -573,13 +665,25 @@ export async function renderDepouillementView(container) {
             <tbody>
               ${
                 seances.length === 0
-                  ? `<tr><td colspan="4" style="text-align:center;color:#475569;">Aucune séance enregistrée pour ${escapeHtml(province)}.</td></tr>`
+                  ? `<tr><td colspan="5" style="text-align:center;color:#475569;">Aucune séance enregistrée pour ${escapeHtml(province)}.</td></tr>`
                   : seances
                       .map((s) => {
-                        const isSelected = activeSeance && s.id === activeSeance.id;
+                        const idStr = String(s.id);
+                        const isSelected = activeSeance && String(activeSeance.id) === idStr;
                         const isTerminated = s.statut === 'Terminée';
+                        const isChecked = selectedForDeleteIds.has(idStr);
                         return `
                         <tr style="${isSelected ? 'background:#f0fdf4;' : 'background:#ffffff;'}color:#0f172a;">
+                          <td>
+                            <input
+                              type="checkbox"
+                              class="chk-select-seance"
+                              data-id="${escapeHtml(idStr)}"
+                              ${isChecked ? 'checked' : ''}
+                              aria-label="Sélectionner la séance"
+                              style="width:16px;height:16px;cursor:pointer;"
+                            />
+                          </td>
                           <td>
                             <strong>${escapeHtml(s.mois || '')} ${escapeHtml(s.annee || '')}</strong> — ${escapeHtml(s.phase || '')}
                             <br><span style="font-size:0.75rem;color:#475569;">Date : ${escapeHtml(s.date || '')}</span>
@@ -592,10 +696,10 @@ export async function renderDepouillementView(container) {
                           </td>
                           <td>
                             <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                              <button type="button" class="btn-secondary btn-edit-seance" data-id="${escapeHtml(s.id)}" style="padding:4px 7px;font-size:0.74rem;">✏️ Modifier</button>
-                              <button type="button" class="btn-primary btn-term-seance" data-id="${escapeHtml(s.id)}" style="padding:4px 7px;font-size:0.74rem;">✅ Terminer</button>
-                              <button type="button" class="btn-secondary btn-arch-seance-row" data-id="${escapeHtml(s.id)}" style="padding:4px 7px;font-size:0.74rem;">🗂️ Archiver</button>
-                              <button type="button" class="btn-icon btn-del-seance-row" data-id="${escapeHtml(s.id)}" title="Supprimer">🗑️</button>
+                              <button type="button" class="btn-secondary btn-edit-seance" data-id="${escapeHtml(idStr)}" style="padding:4px 7px;font-size:0.74rem;">✏️ Modifier</button>
+                              <button type="button" class="btn-primary btn-term-seance" data-id="${escapeHtml(idStr)}" style="padding:4px 7px;font-size:0.74rem;">✅ Terminer</button>
+                              <button type="button" class="btn-secondary btn-arch-seance-row" data-id="${escapeHtml(idStr)}" style="padding:4px 7px;font-size:0.74rem;">🗂️ Archiver</button>
+                              <button type="button" class="btn-icon btn-del-seance-row" data-id="${escapeHtml(idStr)}" title="Supprimer">🗑️</button>
                             </div>
                           </td>
                         </tr>
@@ -662,8 +766,7 @@ export async function renderDepouillementView(container) {
                                 ${formatUsd(resume.totalSousTotauxUsd)}
                               </td>
                               <td style="font-size:0.78rem;color:#b45309;">
-                                ${formatFc(resume.transportFc)}<br>
-                                ${formatUsd(resume.transportUsd)}
+                                ${formatFc(resume.transportFc)}<br>${formatUsd(resume.transportUsd)}
                               </td>
                               <td style="font-size:0.78rem;">
                                 <strong style="color:#0a6e2c;">${formatFc(resume.soldeFc)}</strong><br>
@@ -720,7 +823,7 @@ export async function renderDepouillementView(container) {
           responsable
         });
         editingSeanceId = null;
-        selectedSeanceId = updated.id;
+        selectedSeanceId = String(updated.id);
         notifyUser('Séance modifiée.', 'success');
         await render();
         return;
@@ -739,16 +842,53 @@ export async function renderDepouillementView(container) {
         createdAt: new Date().toISOString()
       });
 
-      selectedSeanceId = created.id;
+      selectedSeanceId = String(created.id);
       selectedEntiteId = '';
       notifyUser('Séance de dépouillement créée.', 'success');
       await render();
     });
 
+    host.querySelectorAll('.chk-select-seance').forEach((chk) => {
+      chk.addEventListener('change', async () => {
+        const idStr = String(chk.dataset.id);
+        if (chk.checked) {
+          selectedForDeleteIds.add(idStr);
+        } else {
+          selectedForDeleteIds.delete(idStr);
+        }
+        await render();
+      });
+    });
+
+    host.querySelector('#btn-toggle-select-all')?.addEventListener('click', async () => {
+      if (allChecked) {
+        seances.forEach((s) => selectedForDeleteIds.delete(String(s.id)));
+      } else {
+        seances.forEach((s) => selectedForDeleteIds.add(String(s.id)));
+      }
+      await render();
+    });
+
+    host.querySelector('#btn-delete-selected-seances')?.addEventListener('click', async () => {
+      const idsToDelete = Array.from(selectedForDeleteIds);
+      if (idsToDelete.length === 0) {
+        notifyUser('Cochez au moins une séance à supprimer.', 'error');
+        return;
+      }
+      if (!window.confirm(`Supprimer définitivement les ${idsToDelete.length} séance(s) sélectionnée(s) ?`)) {
+        return;
+      }
+      await deleteMultipleSeances(idsToDelete);
+      if (idsToDelete.includes(String(selectedSeanceId))) selectedSeanceId = '';
+      if (idsToDelete.includes(String(editingSeanceId))) editingSeanceId = null;
+      notifyUser(`${idsToDelete.length} séance(s) supprimée(s).`, 'info');
+      await render();
+    });
+
     host.querySelectorAll('.btn-edit-seance').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        editingSeanceId = btn.dataset.id;
-        selectedSeanceId = btn.dataset.id;
+        editingSeanceId = String(btn.dataset.id);
+        selectedSeanceId = String(btn.dataset.id);
         await render();
         host.querySelector('#s-mois')?.focus();
       });
@@ -756,7 +896,7 @@ export async function renderDepouillementView(container) {
 
     host.querySelectorAll('.btn-term-seance').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        const target = seances.find((s) => s.id === btn.dataset.id);
+        const target = seances.find((s) => String(s.id) === String(btn.dataset.id));
         if (!target) return;
         await persistSeance({ ...target, statut: 'Terminée' });
         notifyUser('Séance marquée comme Terminée.', 'success');
@@ -766,12 +906,12 @@ export async function renderDepouillementView(container) {
 
     host.querySelectorAll('.btn-arch-seance-row').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        const target = seances.find((s) => s.id === btn.dataset.id);
+        const target = seances.find((s) => String(s.id) === String(btn.dataset.id));
         if (!target) return;
         if (!window.confirm('Archiver cette séance de dépouillement ?')) return;
         await archiveSeance(target);
-        if (selectedSeanceId === target.id) selectedSeanceId = '';
-        if (editingSeanceId === target.id) editingSeanceId = null;
+        if (String(selectedSeanceId) === String(target.id)) selectedSeanceId = '';
+        if (String(editingSeanceId) === String(target.id)) editingSeanceId = null;
         notifyUser('Séance archivée.', 'info');
         await render();
       });
@@ -779,24 +919,25 @@ export async function renderDepouillementView(container) {
 
     host.querySelectorAll('.btn-del-seance-row').forEach((btn) => {
       btn.addEventListener('click', async () => {
+        const idStr = String(btn.dataset.id);
         if (!window.confirm('Supprimer définitivement cette séance ?')) return;
-        await deleteSeance(btn.dataset.id);
-        if (selectedSeanceId === btn.dataset.id) selectedSeanceId = '';
-        if (editingSeanceId === btn.dataset.id) editingSeanceId = null;
+        await deleteSeance(idStr);
+        if (String(selectedSeanceId) === idStr) selectedSeanceId = '';
+        if (String(editingSeanceId) === idStr) editingSeanceId = null;
         notifyUser('Séance supprimée.', 'info');
         await render();
       });
     });
 
     host.querySelector('#select-seance-courante')?.addEventListener('change', async (e) => {
-      selectedSeanceId = e.target.value;
+      selectedSeanceId = String(e.target.value);
       selectedEntiteId = '';
       await render();
     });
 
     const handleAddEntite = async () => {
       const latestSeance =
-        getLocalSeances().find((s) => s.id === activeSeance?.id) || activeSeance;
+        getLocalSeances().find((s) => String(s.id) === String(activeSeance?.id)) || activeSeance;
       if (!latestSeance) {
         notifyUser('Veuillez d’abord créer ou sélectionner une séance.', 'error');
         return;
@@ -814,8 +955,8 @@ export async function renderDepouillementView(container) {
         entites: [...(Array.isArray(latestSeance.entites) ? latestSeance.entites : []), newEnt]
       };
       await persistSeance(updatedSeance);
-      selectedSeanceId = updatedSeance.id;
-      selectedEntiteId = newEnt.id;
+      selectedSeanceId = String(updatedSeance.id);
+      selectedEntiteId = String(newEnt.id);
       notifyUser("Entité enregistrée dans la séance.", 'success');
       activeTab = 'saisie';
       await render();
@@ -832,7 +973,7 @@ export async function renderDepouillementView(container) {
 
     host.querySelectorAll('.btn-open-entite').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        selectedEntiteId = btn.dataset.id;
+        selectedEntiteId = String(btn.dataset.id);
         activeTab = 'saisie';
         await render();
       });
@@ -841,12 +982,14 @@ export async function renderDepouillementView(container) {
     host.querySelectorAll('.btn-del-entite').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const latestSeance =
-          getLocalSeances().find((s) => s.id === activeSeance?.id) || activeSeance;
+          getLocalSeances().find((s) => String(s.id) === String(activeSeance?.id)) || activeSeance;
         if (!latestSeance) return;
         if (!window.confirm('Retirer cette entité de la séance ?')) return;
-        const nextEntites = (latestSeance.entites || []).filter((e) => e.id !== btn.dataset.id);
+        const nextEntites = (latestSeance.entites || []).filter(
+          (e) => String(e.id) !== String(btn.dataset.id)
+        );
         await persistSeance({ ...latestSeance, entites: nextEntites });
-        if (selectedEntiteId === btn.dataset.id) selectedEntiteId = '';
+        if (String(selectedEntiteId) === String(btn.dataset.id)) selectedEntiteId = '';
         notifyUser('Entité retirée.', 'info');
         await render();
       });
@@ -871,8 +1014,9 @@ export async function renderDepouillementView(container) {
     }
 
     const currentEntite =
-      activeSeance.entites.find((e) => e.id === selectedEntiteId) || activeSeance.entites[0];
-    selectedEntiteId = currentEntite.id;
+      activeSeance.entites.find((e) => String(e.id) === String(selectedEntiteId)) ||
+      activeSeance.entites[0];
+    selectedEntiteId = String(currentEntite.id);
 
     const resume = computeEntiteSummary(currentEntite);
 
@@ -880,7 +1024,7 @@ export async function renderDepouillementView(container) {
       .map(
         (e) =>
           `<option value="${escapeHtml(e.id)}" ${
-            e.id === currentEntite.id ? 'selected' : ''
+            String(e.id) === String(currentEntite.id) ? 'selected' : ''
           }>${escapeHtml(`${e.typeEntite || ''} — ${e.nomEntite || ''}`)}</option>`
       )
       .join('');
@@ -909,7 +1053,7 @@ export async function renderDepouillementView(container) {
     host.innerHTML = `
       <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-          <h3 style="margin:0;color:#0f172a;">Comptage Entité — ${escapeHtml(activeSeance.mois || '')} ${escapeHtml(activeSeance.annee || '')}</h3>
+          <h3 style="margin:0;color:#0f172a;">Comptage Entité — ${escapeHtml(activeSeance.mois || '')}${escapeHtml(activeSeance.annee || '')}</h3>
           <select id="select-entite-saisie" aria-label="Choisir l'entité" style="max-width:260px;background:#ffffff;color:#0f172a;border:1px solid #94a3b8;">
             ${entiteSelectorHtml}
           </select>
@@ -1054,7 +1198,7 @@ export async function renderDepouillementView(container) {
     `;
 
     host.querySelector('#select-entite-saisie')?.addEventListener('change', async (e) => {
-      selectedEntiteId = e.target.value;
+      selectedEntiteId = String(e.target.value);
       await render();
     });
 
@@ -1074,7 +1218,7 @@ export async function renderDepouillementView(container) {
       const normalesUsd = Math.max(0, Number(host.querySelector('#ent-norm-usd')?.value) || 0);
 
       const updatedEntites = activeSeance.entites.map((ent) =>
-        ent.id === currentEntite.id
+        String(ent.id) === String(currentEntite.id)
           ? { ...ent, enveloppes, constructionFc, constructionUsd, normalesFc, normalesUsd }
           : ent
       );
@@ -1095,7 +1239,7 @@ export async function renderDepouillementView(container) {
       }
 
       const updatedEntites = activeSeance.entites.map((ent) => {
-        if (ent.id !== currentEntite.id) return ent;
+        if (String(ent.id) !== String(currentEntite.id)) return ent;
         const mapRub = { ...(ent.nominatifsParRubrique || {}) };
         const arr = Array.isArray(mapRub[activeRubriqueNom]) ? [...mapRub[activeRubriqueNom]] : [];
         arr.push({
@@ -1117,7 +1261,7 @@ export async function renderDepouillementView(container) {
       btn.addEventListener('click', async () => {
         const idx = Number(btn.dataset.idx);
         const updatedEntites = activeSeance.entites.map((ent) => {
-          if (ent.id !== currentEntite.id) return ent;
+          if (String(ent.id) !== String(currentEntite.id)) return ent;
           const mapRub = { ...(ent.nominatifsParRubrique || {}) };
           const arr = Array.isArray(mapRub[activeRubriqueNom]) ? [...mapRub[activeRubriqueNom]] : [];
           arr.splice(idx, 1);
@@ -1136,7 +1280,7 @@ export async function renderDepouillementView(container) {
       const transportUsd = Math.max(0, Number(host.querySelector('#ent-trans-usd')?.value) || 0);
 
       const updatedEntites = activeSeance.entites.map((ent) =>
-        ent.id === currentEntite.id ? { ...ent, transportFc, transportUsd } : ent
+        String(ent.id) === String(currentEntite.id) ? { ...ent, transportFc, transportUsd } : ent
       );
       await persistSeance({ ...activeSeance, entites: updatedEntites });
       notifyUser('Dépense de transport enregistrée.', 'success');
@@ -1284,7 +1428,7 @@ export async function renderDepouillementView(container) {
 
     const entitesBlocksHtml = summary.entitesCalculees
       .map(({ entite, resume }, index) => {
-        const nomComplet = `${index + 1}. ${entite.typeEntite || ''} — ${entite.nomEntite || ''}`;
+        const nomComplet = `${index + 1}. ${entite.typeEntite || ''} —${entite.nomEntite || ''}`;
 
         const hasConstr = resume.constrFc > 0 || resume.constrUsd > 0;
         const hasNorm = resume.normFc > 0 || resume.normUsd > 0;
@@ -1345,83 +1489,4 @@ export async function renderDepouillementView(container) {
                 : ''
             }
 
-            <div style="font-size:0.78rem;line-height:1.55;border-top:1px solid #cbd5e1;padding-top:6px;margin-top:6px;color:#0f172a;">
-              • <strong>Total des sous-totaux :</strong> <strong>${formatFc(resume.totalSousTotauxFc)}</strong> • <strong>${formatUsd(resume.totalSousTotauxUsd)}</strong><br>
-              ${hasTransport ? `• Dépense de transport : <strong style="color:#b45309;">${formatFc(resume.transportFc)}</strong> • <strong style="color:#b45309;">${formatUsd(resume.transportUsd)}</strong><br>` : ''}
-              • <strong>Solde de l'entité :</strong> <strong style="color:#0a6e2c;">${formatFc(resume.soldeFc)}</strong> • <strong style="color:#0a6e2c;">${formatUsd(resume.soldeUsd)}</strong>
-            </div>
-          </div>
-        `;
-      })
-      .join('');
-
-    const depensesRowsHtml =
-      depenses.length === 0
-        ? `<tr><td colspan="2" style="text-align:center;color:#475569;">Aucune dépense générale enregistrée.</td></tr>`
-        : depenses
-            .map(
-              (d) => `
-              <tr style="background:#ffffff;color:#0f172a;">
-                <td><strong>${escapeHtml(d.motif || '')}</strong></td>
-                <td>${d.devise === 'USD' ? `<strong>${formatUsd(d.montant)}</strong>` : `<strong>${formatFc(d.montant)}</strong>`}</td>
-              </tr>
-            `
-            )
-            .join('');
-
-    host.innerHTML = `
-      <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
-        <h3 style="margin:0 0 6px;color:#0f172a;">Rapport Complet — ${escapeHtml(activeSeance.mois || '')} ${escapeHtml(activeSeance.annee || '')}</h3>
-        <div style="font-size:0.8rem;color:#334155;margin-bottom:12px;">
-          Province : <strong>${escapeHtml(province)}</strong> •
-          Phase : <strong>${escapeHtml(activeSeance.phase || '')}</strong> •
-          Date : <strong>${escapeHtml(activeSeance.date || '')}</strong> •
-          Responsable : <strong>${escapeHtml(activeSeance.responsable || '—')}</strong> •
-          Statut : <strong>${escapeHtml(activeSeance.statut || 'Ouverte')}</strong>
-        </div>
-
-        ${entitesBlocksHtml || '<p style="color:#475569;">Aucune entité saisie dans cette séance.</p>'}
-
-        <div style="padding:10px 12px;border-radius:8px;background:#f8fafc;border:1px solid #cbd5e1;font-size:0.84rem;color:#0f172a;margin-bottom:12px;">
-          <strong>Total des soldes des entités :</strong><br>
-          Francs : <strong>${formatFc(summary.totalSoldesEntitesFc)}</strong><br>
-          Dollars : <strong>${formatUsd(summary.totalSoldesEntitesUsd)}</strong>
-        </div>
-
-        <h4 style="margin:0 0 8px;color:#0f172a;">Dépenses Générales (Motif & Montant)</h4>
-        <div class="table-responsive" style="margin-bottom:10px;">
-          <table>
-            <thead>
-              <tr>
-                <th style="color:#0f172a;">Motif</th>
-                <th style="color:#0f172a;">Montant</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${depensesRowsHtml}
-            </tbody>
-          </table>
-        </div>
-
-        <div style="padding:10px 12px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;font-size:0.84rem;color:#0f172a;margin-bottom:12px;">
-          <strong>Décaissement (Transport + Dépenses générales — sans conversion) :</strong><br>
-          Décaissement en francs : <strong>${formatFc(summary.totalDecaissementFc)}</strong><br>
-          Décaissement en dollars : <strong>${formatUsd(summary.totalDecaissementUsd)}</strong>
-        </div>
-
-        <div style="padding:12px;border-radius:8px;background:#ecfdf5;border:1px solid #86efac;font-size:0.88rem;color:#0f172a;">
-          <strong>Solde à transférer à la banque (sans conversion) :</strong><br>
-          Banque en francs : <strong style="color:#0a6e2c;">${formatFc(summary.soldeBanqueFc)}</strong><br>
-          Banque en dollars : <strong style="color:#0a6e2c;">${formatUsd(summary.soldeBanqueUsd)}</strong>
-        </div>
-      </div>
-    `;
-  }
-
-  await render();
-}
-
-export const renderDepouillement = renderDepouillementView;
-export const render = renderDepouillementView;
-export const mount = renderDepouillementView;
-export default renderDepouillementView;
+            <div style="font-size:0.78rem;line-height:1.55;border-top:1px solid #cbd5e1;padding-top:6px;margin-top:6px;color:#
