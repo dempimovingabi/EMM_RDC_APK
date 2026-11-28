@@ -70,7 +70,10 @@ function readLocalList(key) {
 function writeLocalList(key, arr) {
   try {
     localStorage.setItem(key, JSON.stringify(arr));
-  } catch (_) {}
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 async function getFirestoreBridge() {
@@ -122,8 +125,8 @@ function createEmptyEntiteEntry(typeEntite = TYPES_ENTITE_OFFRANDES[0], nomEntit
   });
   return {
     id: `ent_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    typeEntite,
-    nomEntite,
+    typeEntite: String(typeEntite || TYPES_ENTITE_OFFRANDES[0]).trim(),
+    nomEntite: String(nomEntite || '').trim(),
     enveloppes: 0,
     constructionFc: 0,
     constructionUsd: 0,
@@ -220,7 +223,7 @@ function computeSeanceSummary(seance) {
     totalSoldesEntitesUsd += resume.soldeUsd;
     totalTransportFc += resume.transportFc;
     totalTransportUsd += resume.transportUsd;
-    return { entite, resume };
+    return { entite: ent, resume };
   });
 
   let totalDepGenFc = 0;
@@ -270,6 +273,10 @@ export async function renderDepouillementView(container) {
   const colSeances = bridge?.COLLECTIONS?.DEPOUILLEMENTS || 'depouillements';
   const colArchives = bridge?.COLLECTIONS?.ARCHIVES || 'archives';
 
+  function getLocalSeances() {
+    return readLocalList(STORAGE_SEANCES_KEY).filter((s) => s && !s.archived);
+  }
+
   async function loadSeances() {
     const localList = readLocalList(STORAGE_SEANCES_KEY);
     if (!bridge) return localList.filter((s) => s && !s.archived);
@@ -281,7 +288,16 @@ export async function renderDepouillementView(container) {
           if (item?.id) map.set(item.id, item);
         });
         remoteList.forEach((item) => {
-          if (item?.id) map.set(item.id, { ...map.get(item.id), ...item });
+          if (item?.id) {
+            const prev = map.get(item.id) || {};
+            const localEntites = Array.isArray(prev.entites) ? prev.entites : [];
+            const remoteEntites = Array.isArray(item.entites) ? item.entites : [];
+            map.set(item.id, {
+              ...prev,
+              ...item,
+              entites: remoteEntites.length > 0 ? remoteEntites : localEntites
+            });
+          }
         });
         return Array.from(map.values()).filter((s) => s && !s.archived);
       }
@@ -299,14 +315,14 @@ export async function renderDepouillementView(container) {
       depensesGenerales: Array.isArray(seance.depensesGenerales) ? seance.depensesGenerales : []
     };
 
-    const localList = readLocalList(STORAGE_SEANCES_KEY);
-    const idx = localList.findIndex((s) => s && s.id === id);
+    const allStored = readLocalList(STORAGE_SEANCES_KEY);
+    const idx = allStored.findIndex((s) => s && s.id === id);
     if (idx >= 0) {
-      localList[idx] = { ...localList[idx], ...full };
+      allStored[idx] = { ...allStored[idx], ...full };
     } else {
-      localList.unshift(full);
+      allStored.unshift(full);
     }
-    writeLocalList(STORAGE_SEANCES_KEY, localList);
+    writeLocalList(STORAGE_SEANCES_KEY, allStored);
 
     if (bridge) {
       try {
@@ -440,31 +456,14 @@ export async function renderDepouillementView(container) {
       const host = container.querySelector('#dep-tab-host');
       if (!host) return;
 
-      try {
-        if (activeTab === 'seance') {
-          await renderSeanceTab(host, province, seances, activeSeance);
-        } else if (activeTab === 'saisie') {
-          await renderSaisieEntiteTab(host, activeSeance);
-        } else if (activeTab === 'depenses') {
-          await renderDepensesGeneralesTab(host, activeSeance);
-        } else {
-          await renderRapportTab(host, province, activeSeance);
-        }
-      } catch (tabErr) {
-        console.error('[EMM Dépouillement onglet]', tabErr);
-        host.innerHTML = `
-          <div class="card" style="border-left:4px solid #b45309;">
-            <h3 style="margin:0 0 6px;color:#92400e;">Option temporairement indisponible</h3>
-            <p style="margin:0 0 10px;font-size:0.82rem;color:var(--text-muted);">
-              Une donnée de cet onglet est incomplète. Tu peux revenir sur <strong>Séance & Entités</strong>.
-            </p>
-            <button type="button" id="btn-fallback-seance" class="btn-primary">📅 Retour à Séance & Entités</button>
-          </div>
-        `;
-        host.querySelector('#btn-fallback-seance')?.addEventListener('click', async () => {
-          activeTab = 'seance';
-          await render();
-        });
+      if (activeTab === 'seance') {
+        await renderSeanceTab(host, province, seances, activeSeance);
+      } else if (activeTab === 'saisie') {
+        await renderSaisieEntiteTab(host, activeSeance);
+      } else if (activeTab === 'depenses') {
+        await renderDepensesGeneralesTab(host, activeSeance);
+      } else {
+        await renderRapportTab(host, province, activeSeance);
       }
     } catch (err) {
       console.error('[EMM Dépouillement]', err);
@@ -547,22 +546,22 @@ export async function renderDepouillementView(container) {
               Responsable : <strong>${escapeHtml(activeSeance.responsable || '—')}</strong>
             </div>
 
-            <form id="form-add-entite-seance" class="form-stack" style="padding:10px;border:1px solid var(--border-color);border-radius:8px;background:#f9fafb;margin-bottom:12px;">
-              <strong style="font-size:0.84rem;">Ajouter une entité à cette séance</strong>
-              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;">
+            <div style="padding:10px;border:1px solid var(--border-color);border-radius:8px;background:#f9fafb;margin-bottom:12px;">
+              <strong style="display:block;font-size:0.84rem;margin-bottom:8px;">Ajouter une entité à cette séance</strong>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:8px;">
                 <div class="form-group" style="margin-bottom:0;">
                   <label for="new-ent-type">Type d'entité</label>
-                  <select id="new-ent-type" required>
+                  <select id="new-ent-type">
                     ${typeOptions}
                   </select>
                 </div>
                 <div class="form-group" style="margin-bottom:0;">
                   <label for="new-ent-nom">Nom de l'entité</label>
-                  <input id="new-ent-nom" type="text" required placeholder="Ex: Kananga I" />
+                  <input id="new-ent-nom" type="text" placeholder="Ex: Kananga I" />
                 </div>
               </div>
-              <button type="submit" class="btn-secondary">➕ Ajouter l'entité à la séance</button>
-            </form>
+              <button type="button" id="btn-confirm-add-entite" class="btn-secondary">➕ Confirmer et ajouter l'entité</button>
+            </div>
 
             <div class="table-responsive">
               <table>
@@ -662,9 +661,13 @@ export async function renderDepouillementView(container) {
       await render();
     });
 
-    host.querySelector('#form-add-entite-seance')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!activeSeance) return;
+    const handleAddEntite = async () => {
+      const latestSeance =
+        getLocalSeances().find((s) => s.id === activeSeance?.id) || activeSeance;
+      if (!latestSeance) {
+        notifyUser('Veuillez d’abord créer ou sélectionner une séance.', 'error');
+        return;
+      }
       const typeEntite = host.querySelector('#new-ent-type')?.value || TYPES_ENTITE_OFFRANDES[0];
       const nomEntite = (host.querySelector('#new-ent-nom')?.value || '').trim();
       if (!nomEntite) {
@@ -674,14 +677,24 @@ export async function renderDepouillementView(container) {
 
       const newEnt = createEmptyEntiteEntry(typeEntite, nomEntite);
       const updatedSeance = {
-        ...activeSeance,
-        entites: [...(activeSeance.entites || []), newEnt]
+        ...latestSeance,
+        entites: [...(Array.isArray(latestSeance.entites) ? latestSeance.entites : []), newEnt]
       };
       await persistSeance(updatedSeance);
+      selectedSeanceId = updatedSeance.id;
       selectedEntiteId = newEnt.id;
-      notifyUser('Entité ajoutée à la séance.', 'success');
+      notifyUser("Entité enregistrée dans la séance.", 'success');
       activeTab = 'saisie';
       await render();
+    };
+
+    host.querySelector('#btn-confirm-add-entite')?.addEventListener('click', handleAddEntite);
+
+    host.querySelector('#new-ent-nom')?.addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        await handleAddEntite();
+      }
     });
 
     host.querySelectorAll('.btn-open-entite').forEach((btn) => {
@@ -694,10 +707,12 @@ export async function renderDepouillementView(container) {
 
     host.querySelectorAll('.btn-del-entite').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        if (!activeSeance) return;
+        const latestSeance =
+          getLocalSeances().find((s) => s.id === activeSeance?.id) || activeSeance;
+        if (!latestSeance) return;
         if (!window.confirm('Retirer cette entité de la séance ?')) return;
-        const nextEntites = (activeSeance.entites || []).filter((e) => e.id !== btn.dataset.id);
-        await persistSeance({ ...activeSeance, entites: nextEntites });
+        const nextEntites = (latestSeance.entites || []).filter((e) => e.id !== btn.dataset.id);
+        await persistSeance({ ...latestSeance, entites: nextEntites });
         if (selectedEntiteId === btn.dataset.id) selectedEntiteId = '';
         notifyUser('Entité retirée.', 'info');
         await render();
