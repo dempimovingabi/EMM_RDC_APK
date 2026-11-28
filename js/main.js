@@ -72,6 +72,19 @@ async function bootstrap() {
     const mod = await safeImport(modPath);
     if (mod && typeof mod[exportName] === 'function') {
       router.register(routeName, mod[exportName]);
+    } else if (mod && typeof mod.default === 'function') {
+      router.register(routeName, mod.default);
+    } else if (routeName === 'depouillement') {
+      router.register('depouillement', async (container) => {
+        container.innerHTML = `
+          <section class="module-page">
+            <div class="card">
+              <h3>Dépouillement — Chargement impossible</h3>
+              <p style="font-size:0.85rem;">Vérifiez que le fichier <strong>${modPath}</strong> existe bien et exporte <strong>${exportName}</strong>.</p>
+            </div>
+          </section>
+        `;
+      });
     }
   }
 
