@@ -11,7 +11,8 @@ export const TYPES_ENTITE_OFFRANDES = [
 
 export const RUBRIQUES_NOMINATIVES = [
   'Initiation',
-  'Réinitiation',
+  'Sorei saichi',
+  'shinrei saichi',
   'Shoku',
   'Kannon',
   'Photo sacrée',
@@ -106,9 +107,9 @@ function notifyUser(msg, type = 'info') {
       const el = document.createElement('div');
       el.textContent = msg;
       el.style.cssText = `
-        background:${type === 'error' ? '#991b1b' : type === 'success' ? '#0a6e2c' : '#1e293b'};
+        background:${type === 'error' ? '#991b1b' : type === 'success' ? '#0a6e2c' : '#0f172a'};
         color:#ffffff;padding:10px 14px;border-radius:8px;margin-top:6px;
-        font-size:0.84rem;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,0.2);
+        font-size:0.84rem;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,0.25);
       `;
       toastRoot.appendChild(el);
       setTimeout(() => el.remove(), 3000);
@@ -168,6 +169,7 @@ function computeEntiteSummary(entite) {
       }
     });
     rubriquesResume[rub] = {
+      items: entries,
       count: entries.length,
       fc: rubFc,
       usd: rubUsd
@@ -266,6 +268,7 @@ export async function renderDepouillementView(container) {
 
   let activeTab = 'seance';
   let selectedSeanceId = '';
+  let editingSeanceId = null;
   let selectedEntiteId = '';
   let activeRubriqueNom = RUBRIQUES_NOMINATIVES[0];
 
@@ -311,6 +314,7 @@ export async function renderDepouillementView(container) {
       ...seance,
       id,
       archived: false,
+      statut: seance.statut || 'Ouverte',
       entites: Array.isArray(seance.entites) ? seance.entites : [],
       depensesGenerales: Array.isArray(seance.depensesGenerales) ? seance.depensesGenerales : []
     };
@@ -330,6 +334,16 @@ export async function renderDepouillementView(container) {
       } catch (_) {}
     }
     return full;
+  }
+
+  async function deleteSeance(id) {
+    const allStored = readLocalList(STORAGE_SEANCES_KEY).filter((s) => s && s.id !== id);
+    writeLocalList(STORAGE_SEANCES_KEY, allStored);
+    if (bridge) {
+      try {
+        await bridge.deleteDocument(colSeances, id);
+      } catch (_) {}
+    }
   }
 
   async function archiveSeance(seance) {
@@ -389,37 +403,37 @@ export async function renderDepouillementView(container) {
       const summary = activeSeance ? computeSeanceSummary(activeSeance) : null;
 
       container.innerHTML = `
-        <section class="module-page depouillement-page">
-          <div class="page-header">
-            <h2>🧾 Dépouillement — ${escapeHtml(province)}</h2>
+        <section class="module-page depouillement-page" style="background:#ffffff;color:#0f172a;padding:10px;border-radius:12px;">
+          <div class="page-header" style="color:#0f172a;">
+            <h2 style="color:#0f172a;">🧾 Dépouillement — ${escapeHtml(province)}</h2>
           </div>
 
-          <div class="card" style="padding:10px 14px;font-size:0.82rem;color:var(--text-muted);">
-            Province : <strong style="color:var(--green-main);">${escapeHtml(province)}</strong> •
+          <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;padding:10px 14px;font-size:0.82rem;">
+            Province : <strong style="color:#0a6e2c;">${escapeHtml(province)}</strong> •
             Entités : <strong>Centre de Formation, Johrei Center, Unité religieuse, Foyer de lumière, Noyau de salut</strong>
           </div>
 
           <div class="kpi-grid">
-            <div class="kpi-card">
-              <div class="kpi-label">Entités dans la Séance</div>
-              <div class="kpi-value">${summary ? summary.entitesCalculees.length : 0}</div>
+            <div class="kpi-card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
+              <div class="kpi-label" style="color:#475569;">Entités dans la Séance</div>
+              <div class="kpi-value" style="color:#0f172a;">${summary ? summary.entitesCalculees.length : 0}</div>
             </div>
-            <div class="kpi-card">
-              <div class="kpi-label">Total Soldes Entités</div>
-              <div class="kpi-value" style="font-size:0.95rem;">
+            <div class="kpi-card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
+              <div class="kpi-label" style="color:#475569;">Total Soldes Entités</div>
+              <div class="kpi-value" style="color:#0f172a;font-size:0.95rem;">
                 ${summary ? formatFc(summary.totalSoldesEntitesFc) : '0 FC'}<br>
                 ${summary ? formatUsd(summary.totalSoldesEntitesUsd) : '0,00 $'}
               </div>
             </div>
-            <div class="kpi-card" style="border-left-color:#b45309;">
-              <div class="kpi-label">Décaissement (Transport + Dép. gén.)</div>
+            <div class="kpi-card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;border-left:4px solid #b45309;">
+              <div class="kpi-label" style="color:#475569;">Décaissement (Transport + Dép. gén.)</div>
               <div class="kpi-value" style="color:#b45309;font-size:0.95rem;">
                 Décaissement FC : ${summary ? formatFc(summary.totalDecaissementFc) : '0 FC'}<br>
                 Décaissement USD : ${summary ? formatUsd(summary.totalDecaissementUsd) : '0,00 $'}
               </div>
             </div>
-            <div class="kpi-card" style="border-left-color:#0d8a38;">
-              <div class="kpi-label">Solde à Transférer (Banque)</div>
+            <div class="kpi-card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;border-left:4px solid #0d8a38;">
+              <div class="kpi-label" style="color:#475569;">Solde à Transférer (Banque)</div>
               <div class="kpi-value" style="color:#0d8a38;font-size:0.95rem;">
                 ${summary ? formatFc(summary.soldeBanqueFc) : '0 FC'}<br>
                 ${summary ? formatUsd(summary.soldeBanqueUsd) : '0,00 $'}
@@ -442,7 +456,7 @@ export async function renderDepouillementView(container) {
             </button>
           </div>
 
-          <div id="dep-tab-host"></div>
+          <div id="dep-tab-host" style="color:#0f172a;"></div>
         </section>
       `;
 
@@ -468,9 +482,9 @@ export async function renderDepouillementView(container) {
     } catch (err) {
       console.error('[EMM Dépouillement]', err);
       container.innerHTML = `
-        <div class="card">
-          <h3>🧾 Dépouillement</h3>
-          <p style="color:var(--text-muted);">Impossible de charger les données pour le moment. Réessaie dans un instant.</p>
+        <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
+          <h3 style="color:#0f172a;">🧾 Dépouillement</h3>
+          <p style="color:#334155;">Impossible de charger les données pour le moment. Réessaie dans un instant.</p>
         </div>
       `;
     }
@@ -482,12 +496,16 @@ export async function renderDepouillementView(container) {
     const currentMonth = now.toLocaleString('fr-FR', { month: 'long' });
     const todayStr = now.toISOString().slice(0, 10);
 
+    const editingSeance = editingSeanceId
+      ? seances.find((s) => s.id === editingSeanceId) || null
+      : null;
+
     const seanceOptions = seances
       .map(
         (s) =>
           `<option value="${escapeHtml(s.id)}" ${
             activeSeance && s.id === activeSeance.id ? 'selected' : ''
-          }>${escapeHtml(`${s.mois || ''} ${s.annee || ''} — ${s.phase || ''} (${s.date || ''})`)}</option>`
+          }>${escapeHtml(`${s.mois || ''} ${s.annee || ''} — ${s.phase || ''} (${s.statut || 'Ouverte'})`)}</option>`
       )
       .join('');
 
@@ -498,66 +516,121 @@ export async function renderDepouillementView(container) {
     const currentSummary = activeSeance ? computeSeanceSummary(activeSeance) : null;
 
     host.innerHTML = `
-      <div class="card">
-        <h3 style="margin:0 0 10px;">Ouvrir une Séance de Dépouillement (Toutes Entités)</h3>
+      <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
+        <h3 style="margin:0 0 10px;color:#0f172a;">
+          ${editingSeance ? '✏️ Modifier la Séance de Dépouillement' : 'Ouvrir une Séance de Dépouillement (Toutes Entités)'}
+        </h3>
         <form id="form-new-seance" class="form-stack">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;">
             <div class="form-group">
-              <label for="s-mois">Mois</label>
-              <input id="s-mois" type="text" value="${escapeHtml(currentMonth)}" required placeholder="Ex: novembre" />
+              <label for="s-mois" style="color:#0f172a;">Mois</label>
+              <input id="s-mois" type="text" value="${escapeHtml(editingSeance?.mois || currentMonth)}" required placeholder="Ex: novembre" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
             </div>
             <div class="form-group">
-              <label for="s-annee">Année</label>
-              <input id="s-annee" type="number" min="2020" max="2099" value="${currentYear}" required />
+              <label for="s-annee" style="color:#0f172a;">Année</label>
+              <input id="s-annee" type="number" min="2020" max="2099" value="${escapeHtml(editingSeance?.annee || currentYear)}" required style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
             </div>
             <div class="form-group">
-              <label for="s-phase">Phase</label>
-              <input id="s-phase" type="text" value="Phase 1" required placeholder="Ex: Phase 1" />
+              <label for="s-phase" style="color:#0f172a;">Phase</label>
+              <input id="s-phase" type="text" value="${escapeHtml(editingSeance?.phase || 'Phase 1')}" required placeholder="Ex: Phase 1" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
             </div>
             <div class="form-group">
-              <label for="s-date">Date</label>
-              <input id="s-date" type="date" value="${todayStr}" required />
+              <label for="s-date" style="color:#0f172a;">Date</label>
+              <input id="s-date" type="date" value="${escapeHtml(editingSeance?.date || todayStr)}" required style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
             </div>
           </div>
 
           <div class="form-group">
-            <label for="s-responsable">Responsable de séance</label>
-            <input id="s-responsable" type="text" required placeholder="Nom du responsable" />
+            <label for="s-responsable" style="color:#0f172a;">Responsable de séance</label>
+            <input id="s-responsable" type="text" value="${escapeHtml(editingSeance?.responsable || '')}" required placeholder="Nom du responsable" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
           </div>
 
-          <button type="submit" class="btn-primary">➕ Créer la séance de dépouillement</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="submit" class="btn-primary">
+              ${editingSeance ? '💾 Enregistrer les modifications' : '➕ Créer la séance de dépouillement'}
+            </button>
+            ${
+              editingSeance
+                ? `<button type="button" id="btn-cancel-edit-seance" class="btn-secondary">Annuler</button>`
+                : ''
+            }
+          </div>
         </form>
+      </div>
+
+      <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
+        <h3 style="margin:0 0 10px;color:#0f172a;">Liste des Séances (${seances.length})</h3>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th style="color:#0f172a;">Séance & Phase</th>
+                <th style="color:#0f172a;">Responsable</th>
+                <th style="color:#0f172a;">Statut</th>
+                <th style="color:#0f172a;">Actions Séance</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                seances.length === 0
+                  ? `<tr><td colspan="4" style="text-align:center;color:#475569;">Aucune séance enregistrée pour ${escapeHtml(province)}.</td></tr>`
+                  : seances
+                      .map((s) => {
+                        const isSelected = activeSeance && s.id === activeSeance.id;
+                        const isTerminated = s.statut === 'Terminée';
+                        return `
+                        <tr style="${isSelected ? 'background:#f0fdf4;' : 'background:#ffffff;'}color:#0f172a;">
+                          <td>
+                            <strong>${escapeHtml(s.mois || '')} ${escapeHtml(s.annee || '')}</strong> — ${escapeHtml(s.phase || '')}
+                            <br><span style="font-size:0.75rem;color:#475569;">Date : ${escapeHtml(s.date || '')}</span>
+                          </td>
+                          <td>${escapeHtml(s.responsable || '—')}</td>
+                          <td>
+                            <span class="badge" style="background:${isTerminated ? '#dcfce7' : '#fef3c7'};color:${isTerminated ? '#166534' : '#92400e'};">
+                              ${escapeHtml(s.statut || 'Ouverte')}
+                            </span>
+                          </td>
+                          <td>
+                            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                              <button type="button" class="btn-secondary btn-edit-seance" data-id="${escapeHtml(s.id)}" style="padding:4px 7px;font-size:0.74rem;">✏️ Modifier</button>
+                              <button type="button" class="btn-primary btn-term-seance" data-id="${escapeHtml(s.id)}" style="padding:4px 7px;font-size:0.74rem;">✅ Terminer</button>
+                              <button type="button" class="btn-secondary btn-arch-seance-row" data-id="${escapeHtml(s.id)}" style="padding:4px 7px;font-size:0.74rem;">🗂️ Archiver</button>
+                              <button type="button" class="btn-icon btn-del-seance-row" data-id="${escapeHtml(s.id)}" title="Supprimer">🗑️</button>
+                            </div>
+                          </td>
+                        </tr>
+                      `;
+                      })
+                      .join('')
+              }
+            </tbody>
+          </table>
+        </div>
       </div>
 
       ${
         activeSeance && currentSummary
           ? `
-          <div class="card">
+          <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-              <h3 style="margin:0;">Séance active : ${escapeHtml(activeSeance.mois || '')} ${escapeHtml(activeSeance.annee || '')}</h3>
-              <select id="select-seance-courante" aria-label="Sélectionner une séance" style="max-width:260px;">
+              <h3 style="margin:0;color:#0f172a;">Entités de la séance : ${escapeHtml(activeSeance.mois || '')} ${escapeHtml(activeSeance.annee || '')}</h3>
+              <select id="select-seance-courante" aria-label="Sélectionner une séance" style="max-width:260px;background:#ffffff;color:#0f172a;border:1px solid #94a3b8;">
                 ${seanceOptions}
               </select>
             </div>
 
-            <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:12px;">
-              Phase : <strong>${escapeHtml(activeSeance.phase || '')}</strong> •
-              Date : <strong>${escapeHtml(activeSeance.date || '')}</strong> •
-              Responsable : <strong>${escapeHtml(activeSeance.responsable || '—')}</strong>
-            </div>
-
-            <div style="padding:10px;border:1px solid var(--border-color);border-radius:8px;background:#f9fafb;margin-bottom:12px;">
-              <strong style="display:block;font-size:0.84rem;margin-bottom:8px;">Ajouter une entité à cette séance</strong>
+            <div style="padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;color:#0f172a;margin-bottom:12px;">
+              <strong style="display:block;font-size:0.84rem;margin-bottom:8px;color:#0f172a;">Ajouter une entité à cette séance</strong>
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:8px;">
                 <div class="form-group" style="margin-bottom:0;">
-                  <label for="new-ent-type">Type d'entité</label>
-                  <select id="new-ent-type">
+                  <label for="new-ent-type" style="color:#0f172a;">Type d'entité</label>
+                  <select id="new-ent-type" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;">
                     ${typeOptions}
                   </select>
                 </div>
                 <div class="form-group" style="margin-bottom:0;">
-                  <label for="new-ent-nom">Nom de l'entité</label>
-                  <input id="new-ent-nom" type="text" placeholder="Ex: Kananga I" />
+                  <label for="new-ent-nom" style="color:#0f172a;">Nom de l'entité</label>
+                  <input id="new-ent-nom" type="text" placeholder="Ex: Kananga I" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
                 </div>
               </div>
               <button type="button" id="btn-confirm-add-entite" class="btn-secondary">➕ Confirmer et ajouter l'entité</button>
@@ -567,22 +640,22 @@ export async function renderDepouillementView(container) {
               <table>
                 <thead>
                   <tr>
-                    <th>Entité</th>
-                    <th>Total Sous-totaux</th>
-                    <th>Transport</th>
-                    <th>Solde Entité</th>
-                    <th>Action</th>
+                    <th style="color:#0f172a;">Entité</th>
+                    <th style="color:#0f172a;">Total Sous-totaux</th>
+                    <th style="color:#0f172a;">Transport</th>
+                    <th style="color:#0f172a;">Solde Entité</th>
+                    <th style="color:#0f172a;">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   ${
                     currentSummary.entitesCalculees.length === 0
-                      ? `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Ajoutez les entités concernées par cette séance.</td></tr>`
+                      ? `<tr><td colspan="5" style="text-align:center;color:#475569;">Ajoutez les entités concernées par cette séance.</td></tr>`
                       : currentSummary.entitesCalculees
                           .map(({ entite, resume }) => {
                             const label = `${entite.typeEntite || ''} — ${entite.nomEntite || ''}`;
                             return `
-                            <tr>
+                            <tr style="background:#ffffff;color:#0f172a;">
                               <td><strong>${escapeHtml(label)}</strong></td>
                               <td style="font-size:0.78rem;">
                                 ${formatFc(resume.totalSousTotauxFc)}<br>
@@ -612,15 +685,16 @@ export async function renderDepouillementView(container) {
                 </tbody>
               </table>
             </div>
-
-            <div style="display:flex;justify-content:flex-end;margin-top:12px;">
-              <button type="button" id="btn-archive-seance" class="btn-secondary">🗂️ Archiver la séance</button>
-            </div>
           </div>
         `
           : ''
       }
     `;
+
+    host.querySelector('#btn-cancel-edit-seance')?.addEventListener('click', async () => {
+      editingSeanceId = null;
+      await render();
+    });
 
     host.querySelector('#form-new-seance')?.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -633,6 +707,22 @@ export async function renderDepouillementView(container) {
 
       if (!mois || !phase || !date || !responsable) {
         notifyUser('Veuillez renseigner tous les champs de la séance.', 'error');
+        return;
+      }
+
+      if (editingSeance) {
+        const updated = await persistSeance({
+          ...editingSeance,
+          mois,
+          annee,
+          phase,
+          date,
+          responsable
+        });
+        editingSeanceId = null;
+        selectedSeanceId = updated.id;
+        notifyUser('Séance modifiée.', 'success');
+        await render();
         return;
       }
 
@@ -653,6 +743,49 @@ export async function renderDepouillementView(container) {
       selectedEntiteId = '';
       notifyUser('Séance de dépouillement créée.', 'success');
       await render();
+    });
+
+    host.querySelectorAll('.btn-edit-seance').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        editingSeanceId = btn.dataset.id;
+        selectedSeanceId = btn.dataset.id;
+        await render();
+        host.querySelector('#s-mois')?.focus();
+      });
+    });
+
+    host.querySelectorAll('.btn-term-seance').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const target = seances.find((s) => s.id === btn.dataset.id);
+        if (!target) return;
+        await persistSeance({ ...target, statut: 'Terminée' });
+        notifyUser('Séance marquée comme Terminée.', 'success');
+        await render();
+      });
+    });
+
+    host.querySelectorAll('.btn-arch-seance-row').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const target = seances.find((s) => s.id === btn.dataset.id);
+        if (!target) return;
+        if (!window.confirm('Archiver cette séance de dépouillement ?')) return;
+        await archiveSeance(target);
+        if (selectedSeanceId === target.id) selectedSeanceId = '';
+        if (editingSeanceId === target.id) editingSeanceId = null;
+        notifyUser('Séance archivée.', 'info');
+        await render();
+      });
+    });
+
+    host.querySelectorAll('.btn-del-seance-row').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!window.confirm('Supprimer définitivement cette séance ?')) return;
+        await deleteSeance(btn.dataset.id);
+        if (selectedSeanceId === btn.dataset.id) selectedSeanceId = '';
+        if (editingSeanceId === btn.dataset.id) editingSeanceId = null;
+        notifyUser('Séance supprimée.', 'info');
+        await render();
+      });
     });
 
     host.querySelector('#select-seance-courante')?.addEventListener('change', async (e) => {
@@ -718,23 +851,13 @@ export async function renderDepouillementView(container) {
         await render();
       });
     });
-
-    host.querySelector('#btn-archive-seance')?.addEventListener('click', async () => {
-      if (!activeSeance) return;
-      if (!window.confirm('Archiver cette séance de dépouillement ?')) return;
-      await archiveSeance(activeSeance);
-      selectedSeanceId = '';
-      selectedEntiteId = '';
-      notifyUser('Séance archivée.', 'info');
-      await render();
-    });
   }
 
   async function renderSaisieEntiteTab(host, activeSeance) {
     if (!activeSeance || !Array.isArray(activeSeance.entites) || activeSeance.entites.length === 0) {
       host.innerHTML = `
-        <div class="card" style="text-align:center;">
-          <p style="margin:0 0 10px;color:var(--text-muted);">
+        <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;text-align:center;">
+          <p style="margin:0 0 10px;color:#334155;">
             Ouvrez d'abord une séance et ajoutez au moins une entité pour commencer le comptage.
           </p>
           <button type="button" id="btn-go-seance" class="btn-primary">📅 Aller à Séance & Entités</button>
@@ -784,10 +907,10 @@ export async function renderDepouillementView(container) {
     const currentRubResume = resume.rubriquesResume[activeRubriqueNom] || { fc: 0, usd: 0 };
 
     host.innerHTML = `
-      <div class="card">
+      <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-          <h3 style="margin:0;">Comptage Entité — ${escapeHtml(activeSeance.mois || '')} ${escapeHtml(activeSeance.annee || '')}</h3>
-          <select id="select-entite-saisie" aria-label="Choisir l'entité" style="max-width:260px;">
+          <h3 style="margin:0;color:#0f172a;">Comptage Entité — ${escapeHtml(activeSeance.mois || '')} ${escapeHtml(activeSeance.annee || '')}</h3>
+          <select id="select-entite-saisie" aria-label="Choisir l'entité" style="max-width:260px;background:#ffffff;color:#0f172a;border:1px solid #94a3b8;">
             ${entiteSelectorHtml}
           </select>
         </div>
@@ -795,31 +918,31 @@ export async function renderDepouillementView(container) {
         <form id="form-entite-bases" class="form-stack">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;">
             <div class="form-group">
-              <label for="ent-env">1. Nombre d'enveloppes</label>
-              <input id="ent-env" type="number" min="0" value="${resume.enveloppes}" />
+              <label for="ent-env" style="color:#0f172a;">1. Nombre d'enveloppes</label>
+              <input id="ent-env" type="number" min="0" value="${resume.enveloppes}" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
             </div>
             <div class="form-group">
-              <label for="ent-constr-fc">2. Construction (FC)</label>
-              <input id="ent-constr-fc" type="number" min="0" step="1" value="${resume.constrFc}" />
+              <label for="ent-constr-fc" style="color:#0f172a;">2. Construction (FC)</label>
+              <input id="ent-constr-fc" type="number" min="0" step="1" value="${resume.constrFc}" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
             </div>
             <div class="form-group">
-              <label for="ent-constr-usd">2. Construction (USD)</label>
-              <input id="ent-constr-usd" type="number" min="0" step="0.01" value="${resume.constrUsd}" />
+              <label for="ent-constr-usd" style="color:#0f172a;">2. Construction (USD)</label>
+              <input id="ent-constr-usd" type="number" min="0" step="0.01" value="${resume.constrUsd}" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
             </div>
           </div>
 
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;">
             <div class="form-group">
-              <label for="ent-norm-fc">3. Offrandes Normales (FC)</label>
-              <input id="ent-norm-fc" type="number" min="0" step="1" value="${resume.normFc}" />
+              <label for="ent-norm-fc" style="color:#0f172a;">3. Offrandes Normales (FC)</label>
+              <input id="ent-norm-fc" type="number" min="0" step="1" value="${resume.normFc}" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
             </div>
             <div class="form-group">
-              <label for="ent-norm-usd">3. Offrandes Normales (USD)</label>
-              <input id="ent-norm-usd" type="number" min="0" step="0.01" value="${resume.normUsd}" />
+              <label for="ent-norm-usd" style="color:#0f172a;">3. Offrandes Normales (USD)</label>
+              <input id="ent-norm-usd" type="number" min="0" step="0.01" value="${resume.normUsd}" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
             </div>
           </div>
 
-          <div style="padding:8px 12px;border-radius:8px;background:#f0fdf4;border:1px solid #bbf7d0;font-size:0.8rem;color:#14532d;">
+          <div style="padding:8px 12px;border-radius:8px;background:#f0fdf4;border:1px solid #86efac;font-size:0.8rem;color:#0f172a;">
             <strong>4. Sous-total (Construction + Normales) :</strong><br>
             Francs : <strong>${formatFc(resume.sousTotalCnFc)}</strong><br>
             Dollars : <strong>${formatUsd(resume.sousTotalCnUsd)}</strong>
@@ -829,8 +952,8 @@ export async function renderDepouillementView(container) {
         </form>
       </div>
 
-      <div class="card">
-        <h3 style="margin:0 0 8px;">5. Offrandes Nominatives par Rubrique</h3>
+      <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
+        <h3 style="margin:0 0 8px;color:#0f172a;">5. Offrandes Nominatives par Rubrique</h3>
         <div class="tabs-bar" style="flex-wrap:wrap;gap:6px;margin-bottom:10px;">
           ${rubTabsHtml}
         </div>
@@ -838,16 +961,16 @@ export async function renderDepouillementView(container) {
         <form id="form-add-nominatif" class="form-stack" style="margin-bottom:10px;">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;">
             <div class="form-group">
-              <label for="nom-donateur">Nom du donateur (${escapeHtml(activeRubriqueNom)})</label>
-              <input id="nom-donateur" type="text" required placeholder="Nom complet" />
+              <label for="nom-donateur" style="color:#0f172a;">Nom du donateur (${escapeHtml(activeRubriqueNom)})</label>
+              <input id="nom-donateur" type="text" required placeholder="Nom complet" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
             </div>
             <div class="form-group">
-              <label for="nom-montant">Montant</label>
-              <input id="nom-montant" type="number" min="0.01" step="0.01" required placeholder="0" />
+              <label for="nom-montant" style="color:#0f172a;">Montant</label>
+              <input id="nom-montant" type="number" min="0.01" step="0.01" required placeholder="0" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
             </div>
             <div class="form-group">
-              <label for="nom-devise">Devise</label>
-              <select id="nom-devise">
+              <label for="nom-devise" style="color:#0f172a;">Devise</label>
+              <select id="nom-devise" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;">
                 <option value="FC">FC (Francs)</option>
                 <option value="USD">USD ($)</option>
               </select>
@@ -860,19 +983,19 @@ export async function renderDepouillementView(container) {
           <table>
             <thead>
               <tr>
-                <th>Donateur</th>
-                <th>Montant</th>
-                <th>Action</th>
+                <th style="color:#0f172a;">Donateur</th>
+                <th style="color:#0f172a;">Montant</th>
+                <th style="color:#0f172a;">Action</th>
               </tr>
             </thead>
             <tbody>
               ${
                 currentRubList.length === 0
-                  ? `<tr><td colspan="3" style="text-align:center;color:var(--text-muted);">Aucune offrande nominative pour ${escapeHtml(activeRubriqueNom)}.</td></tr>`
+                  ? `<tr><td colspan="3" style="text-align:center;color:#475569;">Aucune offrande nominative pour ${escapeHtml(activeRubriqueNom)}.</td></tr>`
                   : currentRubList
                       .map(
                         (item, idx) => `
-                        <tr>
+                        <tr style="background:#ffffff;color:#0f172a;">
                           <td><strong>${escapeHtml(item.donateur || '')}</strong></td>
                           <td>
                             ${
@@ -893,16 +1016,16 @@ export async function renderDepouillementView(container) {
           </table>
         </div>
 
-        <div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:#f8fafc;border:1px solid var(--border-color);font-size:0.8rem;">
+        <div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:#f8fafc;border:1px solid #cbd5e1;font-size:0.8rem;color:#0f172a;">
           <strong>Sous-total ${escapeHtml(activeRubriqueNom)} :</strong><br>
           Francs : <strong>${formatFc(currentRubResume.fc)}</strong><br>
           Dollars : <strong>${formatUsd(currentRubResume.usd)}</strong>
         </div>
       </div>
 
-      <div class="card">
-        <h3 style="margin:0 0 8px;">6 à 8. Total des Sous-totaux, Transport & Solde de l'Entité</h3>
-        <div style="font-size:0.82rem;margin-bottom:10px;">
+      <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
+        <h3 style="margin:0 0 8px;color:#0f172a;">6 à 8. Total des Sous-totaux, Transport & Solde de l'Entité</h3>
+        <div style="font-size:0.82rem;margin-bottom:10px;color:#0f172a;">
           <strong>6. Total des sous-totaux :</strong><br>
           Francs : <strong>${formatFc(resume.totalSousTotauxFc)}</strong><br>
           Dollars : <strong>${formatUsd(resume.totalSousTotauxUsd)}</strong>
@@ -911,21 +1034,21 @@ export async function renderDepouillementView(container) {
         <form id="form-entite-transport" class="form-stack">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;">
             <div class="form-group">
-              <label for="ent-trans-fc">7. Dépense de transport (FC)</label>
-              <input id="ent-trans-fc" type="number" min="0" step="1" value="${resume.transportFc}" />
+              <label for="ent-trans-fc" style="color:#0f172a;">7. Dépense de transport (FC)</label>
+              <input id="ent-trans-fc" type="number" min="0" step="1" value="${resume.transportFc}" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
             </div>
             <div class="form-group">
-              <label for="ent-trans-usd">7. Dépense de transport (USD)</label>
-              <input id="ent-trans-usd" type="number" min="0" step="0.01" value="${resume.transportUsd}" />
+              <label for="ent-trans-usd" style="color:#0f172a;">7. Dépense de transport (USD)</label>
+              <input id="ent-trans-usd" type="number" min="0" step="0.01" value="${resume.transportUsd}" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
             </div>
           </div>
           <button type="submit" class="btn-secondary">💾 Enregistrer la dépense de transport</button>
         </form>
 
-        <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:#ecfdf5;border:1px solid #a7f3d0;font-size:0.84rem;color:#065f46;">
+        <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:#ecfdf5;border:1px solid #86efac;font-size:0.84rem;color:#0f172a;">
           <strong>8. Solde de l'entité (Total sous-totaux − Transport) :</strong><br>
-          Solde en francs : <strong>${formatFc(resume.soldeFc)}</strong><br>
-          Solde en dollars : <strong>${formatUsd(resume.soldeUsd)}</strong>
+          Solde en francs : <strong style="color:#0a6e2c;">${formatFc(resume.soldeFc)}</strong><br>
+          Solde en dollars : <strong style="color:#0a6e2c;">${formatUsd(resume.soldeUsd)}</strong>
         </div>
       </div>
     `;
@@ -1023,7 +1146,7 @@ export async function renderDepouillementView(container) {
 
   async function renderDepensesGeneralesTab(host, activeSeance) {
     if (!activeSeance) {
-      host.innerHTML = `<div class="card"><p style="color:var(--text-muted);">Aucune séance active.</p></div>`;
+      host.innerHTML = `<div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;"><p style="color:#334155;">Aucune séance active.</p></div>`;
       return;
     }
 
@@ -1033,9 +1156,9 @@ export async function renderDepouillementView(container) {
       : [];
 
     host.innerHTML = `
-      <div class="card">
-        <h3 style="margin:0 0 8px;">Total des Soldes des Entités & Dépenses Générales</h3>
-        <div style="font-size:0.82rem;margin-bottom:10px;">
+      <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
+        <h3 style="margin:0 0 8px;color:#0f172a;">Total des Soldes des Entités & Dépenses Générales</h3>
+        <div style="font-size:0.82rem;margin-bottom:10px;color:#0f172a;">
           <strong>Total des soldes des entités :</strong><br>
           Francs : <strong>${formatFc(summary.totalSoldesEntitesFc)}</strong><br>
           Dollars : <strong>${formatUsd(summary.totalSoldesEntitesUsd)}</strong>
@@ -1044,16 +1167,16 @@ export async function renderDepouillementView(container) {
         <form id="form-add-dep-gen" class="form-stack">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;">
             <div class="form-group">
-              <label for="dep-gen-motif">Motif de la dépense générale</label>
-              <input id="dep-gen-motif" type="text" required placeholder="Ex: Location salle / Fournitures" />
+              <label for="dep-gen-motif" style="color:#0f172a;">Motif de la dépense générale</label>
+              <input id="dep-gen-motif" type="text" required placeholder="Ex: Location salle / Fournitures" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
             </div>
             <div class="form-group">
-              <label for="dep-gen-montant">Montant</label>
-              <input id="dep-gen-montant" type="number" min="0.01" step="0.01" required placeholder="0" />
+              <label for="dep-gen-montant" style="color:#0f172a;">Montant</label>
+              <input id="dep-gen-montant" type="number" min="0.01" step="0.01" required placeholder="0" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;" />
             </div>
             <div class="form-group">
-              <label for="dep-gen-devise">Devise</label>
-              <select id="dep-gen-devise">
+              <label for="dep-gen-devise" style="color:#0f172a;">Devise</label>
+              <select id="dep-gen-devise" style="background:#ffffff;color:#0f172a;border:1px solid #94a3b8;">
                 <option value="FC">FC (Francs)</option>
                 <option value="USD">USD ($)</option>
               </select>
@@ -1063,25 +1186,25 @@ export async function renderDepouillementView(container) {
         </form>
       </div>
 
-      <div class="card">
-        <h3 style="margin:0 0 8px;">Liste des Dépenses Générales (${depenses.length})</h3>
+      <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
+        <h3 style="margin:0 0 8px;color:#0f172a;">Liste des Dépenses Générales (${depenses.length})</h3>
         <div class="table-responsive">
           <table>
             <thead>
               <tr>
-                <th>Motif</th>
-                <th>Montant</th>
-                <th>Action</th>
+                <th style="color:#0f172a;">Motif</th>
+                <th style="color:#0f172a;">Montant</th>
+                <th style="color:#0f172a;">Action</th>
               </tr>
             </thead>
             <tbody>
               ${
                 depenses.length === 0
-                  ? `<tr><td colspan="3" style="text-align:center;color:var(--text-muted);">Aucune dépense générale enregistrée.</td></tr>`
+                  ? `<tr><td colspan="3" style="text-align:center;color:#475569;">Aucune dépense générale enregistrée.</td></tr>`
                   : depenses
                       .map(
                         (d, idx) => `
-                        <tr>
+                        <tr style="background:#ffffff;color:#0f172a;">
                           <td><strong>${escapeHtml(d.motif || '')}</strong></td>
                           <td>
                             ${
@@ -1102,13 +1225,13 @@ export async function renderDepouillementView(container) {
           </table>
         </div>
 
-        <div style="margin-top:12px;padding:10px 12px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;font-size:0.84rem;color:#92400e;">
+        <div style="margin-top:12px;padding:10px 12px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;font-size:0.84rem;color:#0f172a;">
           <strong>Décaissement (Transport + Dépenses générales — sans conversion) :</strong><br>
           Décaissement en francs : <strong>${formatFc(summary.totalDecaissementFc)}</strong><br>
           Décaissement en dollars : <strong>${formatUsd(summary.totalDecaissementUsd)}</strong>
         </div>
 
-        <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:#f0fdf4;border:1px solid #bbf7d0;font-size:0.86rem;color:#14532d;">
+        <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:#f0fdf4;border:1px solid #86efac;font-size:0.86rem;color:#0f172a;">
           <strong>Solde à transférer à la banque (sans conversion) :</strong><br>
           Banque en francs : <strong style="color:#0a6e2c;">${formatFc(summary.soldeBanqueFc)}</strong><br>
           Banque en dollars : <strong style="color:#0a6e2c;">${formatUsd(summary.soldeBanqueUsd)}</strong>
@@ -1150,7 +1273,7 @@ export async function renderDepouillementView(container) {
 
   async function renderRapportTab(host, province, activeSeance) {
     if (!activeSeance) {
-      host.innerHTML = `<div class="card"><p style="color:var(--text-muted);">Aucune séance à afficher dans le rapport.</p></div>`;
+      host.innerHTML = `<div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;"><p style="color:#334155;">Aucune séance à afficher dans le rapport.</p></div>`;
       return;
     }
 
@@ -1160,28 +1283,71 @@ export async function renderDepouillementView(container) {
       : [];
 
     const entitesBlocksHtml = summary.entitesCalculees
-      .map(({ entite, resume }) => {
-        const nomComplet = `${entite.typeEntite || ''} — ${entite.nomEntite || ''}`;
-        const rubDetails = RUBRIQUES_NOMINATIVES.map((rub) => {
-          const rInfo = resume.rubriquesResume[rub] || { count: 0, fc: 0, usd: 0 };
-          return `<li>${escapeHtml(rub)} (${rInfo.count}) : <strong>${formatFc(rInfo.fc)}</strong> • <strong>${formatUsd(rInfo.usd)}</strong></li>`;
-        }).join('');
+      .map(({ entite, resume }, index) => {
+        const nomComplet = `${index + 1}. ${entite.typeEntite || ''} — ${entite.nomEntite || ''}`;
+
+        const hasConstr = resume.constrFc > 0 || resume.constrUsd > 0;
+        const hasNorm = resume.normFc > 0 || resume.normUsd > 0;
+        const hasSousTotalCn = resume.sousTotalCnFc > 0 || resume.sousTotalCnUsd > 0;
+        const hasTransport = resume.transportFc > 0 || resume.transportUsd > 0;
+
+        // Afficher uniquement les rubriques nominatives qui ont au moins une offrande enregistrée
+        const rubriquesEnregistreesHtml = RUBRIQUES_NOMINATIVES.filter((rub) => {
+          const rInfo = resume.rubriquesResume[rub];
+          return rInfo && Array.isArray(rInfo.items) && rInfo.items.length > 0;
+        })
+          .map((rub) => {
+            const rInfo = resume.rubriquesResume[rub];
+            const donateursHtml = rInfo.items
+              .map(
+                (it) => `
+                <div style="font-size:0.75rem;color:#0f172a;padding-left:10px;">
+                  • ${escapeHtml(it.donateur || 'Donateur')} : <strong>${
+                  it.devise === 'USD' ? formatUsd(it.montant) : formatFc(it.montant)
+                }</strong>
+                </div>
+              `
+              )
+              .join('');
+
+            return `
+              <div style="margin:6px 0;padding:6px 8px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;color:#0f172a;">
+                <div style="font-size:0.78rem;">
+                  <strong>Rubrique : ${escapeHtml(rub)}</strong> (${rInfo.count})
+                </div>
+                ${donateursHtml}
+                <div style="font-size:0.75rem;margin-top:4px;color:#0f172a;">
+                  Sous-total ${escapeHtml(rub)} : <strong>${formatFc(rInfo.fc)}</strong> • <strong>${formatUsd(rInfo.usd)}</strong>
+                </div>
+              </div>
+            `;
+          })
+          .join('');
 
         return `
-          <div style="padding:10px;border:1px solid var(--border-color);border-radius:8px;margin-bottom:10px;background:#fff;">
-            <strong style="font-size:0.88rem;color:var(--green-main);">${escapeHtml(nomComplet)}</strong>
-            <div style="font-size:0.78rem;margin-top:4px;line-height:1.55;">
-              • Enveloppes : <strong>${formatNum(resume.enveloppes)}</strong><br>
-              • Offrandes de construction : <strong>${formatFc(resume.constrFc)}</strong> • <strong>${formatUsd(resume.constrUsd)}</strong><br>
-              • Offrandes normales : <strong>${formatFc(resume.normFc)}</strong> • <strong>${formatUsd(resume.normUsd)}</strong><br>
-              • <strong>Sous-total (Construction + Normales) :</strong> <strong>${formatFc(resume.sousTotalCnFc)}</strong> • <strong>${formatUsd(resume.sousTotalCnUsd)}</strong>
+          <div style="padding:10px;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:12px;background:#ffffff;color:#0f172a;">
+            <strong style="font-size:0.9rem;color:#0a6e2c;">${escapeHtml(nomComplet)}</strong>
+            <div style="font-size:0.78rem;margin-top:6px;line-height:1.55;color:#0f172a;">
+              ${resume.enveloppes > 0 ? `• Nombre d'enveloppes : <strong>${formatNum(resume.enveloppes)}</strong><br>` : ''}
+              ${hasConstr ? `• Offrandes de construction : <strong>${formatFc(resume.constrFc)}</strong> • <strong>${formatUsd(resume.constrUsd)}</strong><br>` : ''}
+              ${hasNorm ? `• Offrandes normales : <strong>${formatFc(resume.normFc)}</strong> • <strong>${formatUsd(resume.normUsd)}</strong><br>` : ''}
+              ${hasSousTotalCn ? `• <strong>Sous-total (Construction + Normales) :</strong> <strong>${formatFc(resume.sousTotalCnFc)}</strong> • <strong>${formatUsd(resume.sousTotalCnUsd)}</strong><br>` : ''}
             </div>
-            <ul style="margin:6px 0;padding-left:18px;font-size:0.76rem;">
-              ${rubDetails}
-            </ul>
-            <div style="font-size:0.78rem;line-height:1.55;border-top:1px dashed var(--border-color);padding-top:6px;">
+
+            ${
+              rubriquesEnregistreesHtml
+                ? `
+                <div style="margin-top:6px;">
+                  <strong style="font-size:0.8rem;color:#0f172a;">Offrandes nominatives enregistrées :</strong>
+                  ${rubriquesEnregistreesHtml}
+                </div>
+              `
+                : ''
+            }
+
+            <div style="font-size:0.78rem;line-height:1.55;border-top:1px solid #cbd5e1;padding-top:6px;margin-top:6px;color:#0f172a;">
               • <strong>Total des sous-totaux :</strong> <strong>${formatFc(resume.totalSousTotauxFc)}</strong> • <strong>${formatUsd(resume.totalSousTotauxUsd)}</strong><br>
-              • Dépense de transport : <strong style="color:#b45309;">${formatFc(resume.transportFc)}</strong> • <strong style="color:#b45309;">${formatUsd(resume.transportUsd)}</strong><br>
+              ${hasTransport ? `• Dépense de transport : <strong style="color:#b45309;">${formatFc(resume.transportFc)}</strong> • <strong style="color:#b45309;">${formatUsd(resume.transportUsd)}</strong><br>` : ''}
               • <strong>Solde de l'entité :</strong> <strong style="color:#0a6e2c;">${formatFc(resume.soldeFc)}</strong> • <strong style="color:#0a6e2c;">${formatUsd(resume.soldeUsd)}</strong>
             </div>
           </div>
@@ -1191,11 +1357,11 @@ export async function renderDepouillementView(container) {
 
     const depensesRowsHtml =
       depenses.length === 0
-        ? `<tr><td colspan="2" style="text-align:center;color:var(--text-muted);">Aucune dépense générale enregistrée.</td></tr>`
+        ? `<tr><td colspan="2" style="text-align:center;color:#475569;">Aucune dépense générale enregistrée.</td></tr>`
         : depenses
             .map(
               (d) => `
-              <tr>
+              <tr style="background:#ffffff;color:#0f172a;">
                 <td><strong>${escapeHtml(d.motif || '')}</strong></td>
                 <td>${d.devise === 'USD' ? `<strong>${formatUsd(d.montant)}</strong>` : `<strong>${formatFc(d.montant)}</strong>`}</td>
               </tr>
@@ -1204,30 +1370,31 @@ export async function renderDepouillementView(container) {
             .join('');
 
     host.innerHTML = `
-      <div class="card">
-        <h3 style="margin:0 0 6px;">Rapport de Dépouillement — ${escapeHtml(activeSeance.mois || '')} ${escapeHtml(activeSeance.annee || '')}</h3>
-        <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:12px;">
+      <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
+        <h3 style="margin:0 0 6px;color:#0f172a;">Rapport Complet — ${escapeHtml(activeSeance.mois || '')} ${escapeHtml(activeSeance.annee || '')}</h3>
+        <div style="font-size:0.8rem;color:#334155;margin-bottom:12px;">
           Province : <strong>${escapeHtml(province)}</strong> •
           Phase : <strong>${escapeHtml(activeSeance.phase || '')}</strong> •
           Date : <strong>${escapeHtml(activeSeance.date || '')}</strong> •
-          Responsable : <strong>${escapeHtml(activeSeance.responsable || '—')}</strong>
+          Responsable : <strong>${escapeHtml(activeSeance.responsable || '—')}</strong> •
+          Statut : <strong>${escapeHtml(activeSeance.statut || 'Ouverte')}</strong>
         </div>
 
-        ${entitesBlocksHtml || '<p style="color:var(--text-muted);">Aucune entité saisie.</p>'}
+        ${entitesBlocksHtml || '<p style="color:#475569;">Aucune entité saisie dans cette séance.</p>'}
 
-        <div style="padding:10px 12px;border-radius:8px;background:#f8fafc;border:1px solid var(--border-color);font-size:0.84rem;margin-bottom:12px;">
+        <div style="padding:10px 12px;border-radius:8px;background:#f8fafc;border:1px solid #cbd5e1;font-size:0.84rem;color:#0f172a;margin-bottom:12px;">
           <strong>Total des soldes des entités :</strong><br>
           Francs : <strong>${formatFc(summary.totalSoldesEntitesFc)}</strong><br>
           Dollars : <strong>${formatUsd(summary.totalSoldesEntitesUsd)}</strong>
         </div>
 
-        <h4 style="margin:0 0 8px;">Dépenses Générales (Motif & Montant)</h4>
+        <h4 style="margin:0 0 8px;color:#0f172a;">Dépenses Générales (Motif & Montant)</h4>
         <div class="table-responsive" style="margin-bottom:10px;">
           <table>
             <thead>
               <tr>
-                <th>Motif</th>
-                <th>Montant</th>
+                <th style="color:#0f172a;">Motif</th>
+                <th style="color:#0f172a;">Montant</th>
               </tr>
             </thead>
             <tbody>
@@ -1236,16 +1403,16 @@ export async function renderDepouillementView(container) {
           </table>
         </div>
 
-        <div style="padding:10px 12px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;font-size:0.84rem;color:#92400e;margin-bottom:12px;">
+        <div style="padding:10px 12px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;font-size:0.84rem;color:#0f172a;margin-bottom:12px;">
           <strong>Décaissement (Transport + Dépenses générales — sans conversion) :</strong><br>
           Décaissement en francs : <strong>${formatFc(summary.totalDecaissementFc)}</strong><br>
           Décaissement en dollars : <strong>${formatUsd(summary.totalDecaissementUsd)}</strong>
         </div>
 
-        <div style="padding:12px;border-radius:8px;background:#ecfdf5;border:1px solid #a7f3d0;font-size:0.88rem;color:#065f46;">
+        <div style="padding:12px;border-radius:8px;background:#ecfdf5;border:1px solid #86efac;font-size:0.88rem;color:#0f172a;">
           <strong>Solde à transférer à la banque (sans conversion) :</strong><br>
-          Banque en francs : <strong>${formatFc(summary.soldeBanqueFc)}</strong><br>
-          Banque en dollars : <strong>${formatUsd(summary.soldeBanqueUsd)}</strong>
+          Banque en francs : <strong style="color:#0a6e2c;">${formatFc(summary.soldeBanqueFc)}</strong><br>
+          Banque en dollars : <strong style="color:#0a6e2c;">${formatUsd(summary.soldeBanqueUsd)}</strong>
         </div>
       </div>
     `;
