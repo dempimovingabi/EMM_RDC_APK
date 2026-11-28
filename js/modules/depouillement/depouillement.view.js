@@ -1,5 +1,5 @@
 // js/modules/depouillement/depouillement.view.js
-// Module Dépouillement des Offrandes — Décaissements (Transport & Dépenses générales) sans conversion FC/USD
+// Module Dépouillement des Offrandes — Version stabilisée anti-"Erreur d'affichage"
 
 export const TYPES_ENTITE_OFFRANDES = [
   'Centre de Formation',
@@ -136,30 +136,29 @@ function createEmptyEntiteEntry(typeEntite = TYPES_ENTITE_OFFRANDES[0], nomEntit
 }
 
 function computeEntiteSummary(entite) {
-  const enveloppes = Math.max(0, Number(entite.enveloppes) || 0);
-  const constrFc = Math.max(0, Number(entite.constructionFc) || 0);
-  const constrUsd = Math.max(0, Number(entite.constructionUsd) || 0);
-  const normFc = Math.max(0, Number(entite.normalesFc) || 0);
-  const normUsd = Math.max(0, Number(entite.normalesUsd) || 0);
+  const safeEnt = entite || {};
+  const enveloppes = Math.max(0, Number(safeEnt.enveloppes) || 0);
+  const constrFc = Math.max(0, Number(safeEnt.constructionFc) || 0);
+  const constrUsd = Math.max(0, Number(safeEnt.constructionUsd) || 0);
+  const normFc = Math.max(0, Number(safeEnt.normalesFc) || 0);
+  const normUsd = Math.max(0, Number(safeEnt.normalesUsd) || 0);
 
-  // Sous-total Construction + Normales (FC et USD séparés)
   const sousTotalCnFc = constrFc + normFc;
   const sousTotalCnUsd = constrUsd + normUsd;
 
-  // Sous-totaux par rubrique nominative (FC et USD séparés)
   const rubriquesResume = {};
   let totalNomFc = 0;
   let totalNomUsd = 0;
 
   RUBRIQUES_NOMINATIVES.forEach((rub) => {
-    const entries = Array.isArray(entite.nominatifsParRubrique?.[rub])
-      ? entite.nominatifsParRubrique[rub]
+    const entries = Array.isArray(safeEnt.nominatifsParRubrique?.[rub])
+      ? safeEnt.nominatifsParRubrique[rub]
       : [];
     let rubFc = 0;
     let rubUsd = 0;
     entries.forEach((item) => {
-      const m = Math.max(0, Number(item.montant) || 0);
-      if (item.devise === 'USD') {
+      const m = Math.max(0, Number(item?.montant) || 0);
+      if (item?.devise === 'USD') {
         rubUsd += m;
       } else {
         rubFc += m;
@@ -174,15 +173,12 @@ function computeEntiteSummary(entite) {
     totalNomUsd += rubUsd;
   });
 
-  // Total des sous-totaux de l'entité (FC et USD séparés)
   const totalSousTotauxFc = sousTotalCnFc + totalNomFc;
   const totalSousTotauxUsd = sousTotalCnUsd + totalNomUsd;
 
-  // Transport de l'entité (FC et USD séparés, sans conversion)
-  const transportFc = Math.max(0, Number(entite.transportFc) || 0);
-  const transportUsd = Math.max(0, Number(entite.transportUsd) || 0);
+  const transportFc = Math.max(0, Number(safeEnt.transportFc) || 0);
+  const transportUsd = Math.max(0, Number(safeEnt.transportUsd) || 0);
 
-  // Solde de l'entité = Total des sous-totaux - Transport (devise par devise, sans conversion)
   const soldeFc = totalSousTotauxFc - transportFc;
   const soldeUsd = totalSousTotauxUsd - transportUsd;
 
@@ -207,9 +203,10 @@ function computeEntiteSummary(entite) {
 }
 
 function computeSeanceSummary(seance) {
-  const entites = Array.isArray(seance.entites) ? seance.entites : [];
-  const depensesGenerales = Array.isArray(seance.depensesGenerales)
-    ? seance.depensesGenerales
+  const safeSeance = seance || {};
+  const entites = Array.isArray(safeSeance.entites) ? safeSeance.entites : [];
+  const depensesGenerales = Array.isArray(safeSeance.depensesGenerales)
+    ? safeSeance.depensesGenerales
     : [];
 
   let totalSoldesEntitesFc = 0;
@@ -223,22 +220,22 @@ function computeSeanceSummary(seance) {
     totalSoldesEntitesUsd += resume.soldeUsd;
     totalTransportFc += resume.transportFc;
     totalTransportUsd += resume.transportUsd;
-    return { entite, resume };
+    return { entite: ent, resume };
   });
 
   let totalDepGenFc = 0;
   let totalDepGenUsd = 0;
 
   depensesGenerales.forEach((d) => {
-    const m = Math.max(0, Number(d.montant) || 0);
-    if (d.devise === 'USD') {
+    const m = Math.max(0, Number(d?.montant) || 0);
+    if (d?.devise === 'USD') {
       totalDepGenUsd += m;
     } else {
       totalDepGenFc += m;
     }
   });
 
-  // Décaissement = dépenses de transport + dépenses générales (FC et USD séparés, sans conversion)
+  // Décaissement = dépenses de transport + dépenses générales (sans conversion)
   const totalDecaissementFc = totalTransportFc + totalDepGenFc;
   const totalDecaissementUsd = totalTransportUsd + totalDepGenUsd;
 
@@ -262,6 +259,8 @@ function computeSeanceSummary(seance) {
 }
 
 export async function renderDepouillementView(container) {
+  if (!container) return;
+
   let activeTab = 'seance';
   let selectedSeanceId = '';
   let selectedEntiteId = '';
@@ -273,25 +272,35 @@ export async function renderDepouillementView(container) {
 
   async function loadSeances() {
     const localList = readLocalList(STORAGE_SEANCES_KEY);
-    if (!bridge) return localList.filter((s) => !s.archived);
+    if (!bridge) return localList.filter((s) => s && !s.archived);
     try {
       const remoteList = await bridge.listDocuments(colSeances);
       if (Array.isArray(remoteList) && remoteList.length > 0) {
         const map = new Map();
-        localList.forEach((item) => map.set(item.id, item));
-        remoteList.forEach((item) => map.set(item.id, { ...map.get(item.id), ...item }));
-        return Array.from(map.values()).filter((s) => !s.archived);
+        localList.forEach((item) => {
+          if (item?.id) map.set(item.id, item);
+        });
+        remoteList.forEach((item) => {
+          if (item?.id) map.set(item.id, { ...map.get(item.id), ...item });
+        });
+        return Array.from(map.values()).filter((s) => s && !s.archived);
       }
     } catch (_) {}
-    return localList.filter((s) => !s.archived);
+    return localList.filter((s) => s && !s.archived);
   }
 
   async function persistSeance(seance) {
     const id = seance.id || `seance_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    const full = { ...seance, id, archived: false };
+    const full = {
+      ...seance,
+      id,
+      archived: false,
+      entites: Array.isArray(seance.entites) ? seance.entites : [],
+      depensesGenerales: Array.isArray(seance.depensesGenerales) ? seance.depensesGenerales : []
+    };
 
     const localList = readLocalList(STORAGE_SEANCES_KEY);
-    const idx = localList.findIndex((s) => s.id === id);
+    const idx = localList.findIndex((s) => s && s.id === id);
     if (idx >= 0) {
       localList[idx] = { ...localList[idx], ...full };
     } else {
@@ -326,7 +335,7 @@ export async function renderDepouillementView(container) {
     writeLocalList(STORAGE_ARCHIVES_KEY, archives);
 
     const localList = readLocalList(STORAGE_SEANCES_KEY).map((s) =>
-      s.id === seance.id ? { ...s, archived: true } : s
+      s && s.id === seance.id ? { ...s, archived: true } : s
     );
     writeLocalList(STORAGE_SEANCES_KEY, localList);
 
@@ -339,102 +348,132 @@ export async function renderDepouillementView(container) {
   }
 
   const render = async () => {
-    const province = getActiveProvinceSafe();
-    const allSeances = await loadSeances();
-    const seances = allSeances.filter((s) => !s.province || s.province === province);
+    try {
+      const province = getActiveProvinceSafe();
+      const allSeances = await loadSeances();
+      const seances = allSeances.filter((s) => !s.province || s.province === province);
 
-    if (!selectedSeanceId && seances[0]) {
-      selectedSeanceId = seances[0].id;
-    }
+      if (selectedSeanceId && !seances.some((s) => s.id === selectedSeanceId)) {
+        selectedSeanceId = '';
+      }
+      if (!selectedSeanceId && seances[0]) {
+        selectedSeanceId = seances[0].id;
+      }
 
-    const activeSeance = seances.find((s) => s.id === selectedSeanceId) || seances[0] || null;
-    if (
-      activeSeance &&
-      !selectedEntiteId &&
-      Array.isArray(activeSeance.entites) &&
-      activeSeance.entites[0]
-    ) {
-      selectedEntiteId = activeSeance.entites[0].id;
-    }
+      const activeSeance = seances.find((s) => s.id === selectedSeanceId) || seances[0] || null;
+      const entitesList = Array.isArray(activeSeance?.entites) ? activeSeance.entites : [];
 
-    const summary = activeSeance ? computeSeanceSummary(activeSeance) : null;
+      if (selectedEntiteId && !entitesList.some((e) => e.id === selectedEntiteId)) {
+        selectedEntiteId = '';
+      }
+      if (!selectedEntiteId && entitesList[0]) {
+        selectedEntiteId = entitesList[0].id;
+      }
 
-    container.innerHTML = `
-      <section class="module-page depouillement-page">
-        <div class="page-header">
-          <h2>🧾 Dépouillement — ${escapeHtml(province)}</h2>
-        </div>
+      const summary = activeSeance ? computeSeanceSummary(activeSeance) : null;
 
-        <div class="card" style="padding:10px 14px;font-size:0.82rem;color:var(--text-muted);">
-          Province : <strong style="color:var(--green-main);">${escapeHtml(province)}</strong> •
-          Entités : <strong>Centre de Formation, Johrei Center, Unité religieuse, Foyer de lumière, Noyau de salut</strong>
-        </div>
-
-        <div class="kpi-grid">
-          <div class="kpi-card">
-            <div class="kpi-label">Entités dans la Séance</div>
-            <div class="kpi-value">${summary ? summary.entitesCalculees.length : 0}</div>
+      container.innerHTML = `
+        <section class="module-page depouillement-page">
+          <div class="page-header">
+            <h2>🧾 Dépouillement — ${escapeHtml(province)}</h2>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Total Soldes Entités</div>
-            <div class="kpi-value" style="font-size:0.95rem;">
-              ${summary ? formatFc(summary.totalSoldesEntitesFc) : '0 FC'}<br>
-              ${summary ? formatUsd(summary.totalSoldesEntitesUsd) : '0,00 $'}
+
+          <div class="card" style="padding:10px 14px;font-size:0.82rem;color:var(--text-muted);">
+            Province : <strong style="color:var(--green-main);">${escapeHtml(province)}</strong> •
+            Entités : <strong>Centre de Formation, Johrei Center, Unité religieuse, Foyer de lumière, Noyau de salut</strong>
+          </div>
+
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-label">Entités dans la Séance</div>
+              <div class="kpi-value">${summary ? summary.entitesCalculees.length : 0}</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Total Soldes Entités</div>
+              <div class="kpi-value" style="font-size:0.95rem;">
+                ${summary ? formatFc(summary.totalSoldesEntitesFc) : '0 FC'}<br>
+                ${summary ? formatUsd(summary.totalSoldesEntitesUsd) : '0,00 $'}
+              </div>
+            </div>
+            <div class="kpi-card" style="border-left-color:#b45309;">
+              <div class="kpi-label">Décaissement (Transport + Dép. gén.)</div>
+              <div class="kpi-value" style="color:#b45309;font-size:0.95rem;">
+                Décaissement FC : ${summary ? formatFc(summary.totalDecaissementFc) : '0 FC'}<br>
+                Décaissement USD : ${summary ? formatUsd(summary.totalDecaissementUsd) : '0,00 $'}
+              </div>
+            </div>
+            <div class="kpi-card" style="border-left-color:#0d8a38;">
+              <div class="kpi-label">Solde à Transférer (Banque)</div>
+              <div class="kpi-value" style="color:#0d8a38;font-size:0.95rem;">
+                ${summary ? formatFc(summary.soldeBanqueFc) : '0 FC'}<br>
+                ${summary ? formatUsd(summary.soldeBanqueUsd) : '0,00 $'}
+              </div>
             </div>
           </div>
-          <div class="kpi-card" style="border-left-color:#b45309;">
-            <div class="kpi-label">Décaissement (Transport + Dép. gén.)</div>
-            <div class="kpi-value" style="color:#b45309;font-size:0.95rem;">
-              Décaissement FC : ${summary ? formatFc(summary.totalDecaissementFc) : '0 FC'}<br>
-              Décaissement USD : ${summary ? formatUsd(summary.totalDecaissementUsd) : '0,00 $'}
-            </div>
+
+          <div class="tabs-bar" role="tablist">
+            <button type="button" class="tab-btn ${activeTab === 'seance' ? 'active' : ''}" data-dtab="seance">
+              📅 Séance & Entités
+            </button>
+            <button type="button" class="tab-btn ${activeTab === 'saisie' ? 'active' : ''}" data-dtab="saisie">
+              ✍️ Saisie par Entité
+            </button>
+            <button type="button" class="tab-btn ${activeTab === 'depenses' ? 'active' : ''}" data-dtab="depenses">
+              💸 Dépenses Générales & Banque
+            </button>
+            <button type="button" class="tab-btn ${activeTab === 'rapport' ? 'active' : ''}" data-dtab="rapport">
+              📄 Rapport Complet
+            </button>
           </div>
-          <div class="kpi-card" style="border-left-color:#0d8a38;">
-            <div class="kpi-label">Solde à Transférer (Banque)</div>
-            <div class="kpi-value" style="color:#0d8a38;font-size:0.95rem;">
-              ${summary ? formatFc(summary.soldeBanqueFc) : '0 FC'}<br>
-              ${summary ? formatUsd(summary.soldeBanqueUsd) : '0,00 $'}
-            </div>
-          </div>
-        </div>
 
-        <div class="tabs-bar" role="tablist">
-          <button type="button" class="tab-btn ${activeTab === 'seance' ? 'active' : ''}" data-dtab="seance">
-            📅 Séance & Entités
-          </button>
-          <button type="button" class="tab-btn ${activeTab === 'saisie' ? 'active' : ''}" data-dtab="saisie">
-            ✍️ Saisie par Entité
-          </button>
-          <button type="button" class="tab-btn ${activeTab === 'depenses' ? 'active' : ''}" data-dtab="depenses">
-            💸 Dépenses Générales & Banque
-          </button>
-          <button type="button" class="tab-btn ${activeTab === 'rapport' ? 'active' : ''}" data-dtab="rapport">
-            📄 Rapport Complet
-          </button>
-        </div>
+          <div id="dep-tab-host"></div>
+        </section>
+      `;
 
-        <div id="dep-tab-host"></div>
-      </section>
-    `;
-
-    container.querySelectorAll('[data-dtab]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        activeTab = btn.dataset.dtab;
-        await render();
+      container.querySelectorAll('[data-dtab]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          activeTab = btn.dataset.dtab;
+          await render();
+        });
       });
-    });
 
-    const host = container.querySelector('#dep-tab-host');
-    if (!host) return;
+      const host = container.querySelector('#dep-tab-host');
+      if (!host) return;
 
-    if (activeTab === 'seance') {
-      await renderSeanceTab(host, province, seances, activeSeance);
-    } else if (activeTab === 'saisie') {
-      await renderSaisieEntiteTab(host, province, seances, activeSeance);
-    } else if (activeTab === 'depenses') {
-      await renderDepensesGeneralesTab(host, province, seances, activeSeance);
-    } else {
-      await renderRapportTab(host, province, seances, activeSeance);
+      try {
+        if (activeTab === 'seance') {
+          await renderSeanceTab(host, province, seances, activeSeance);
+        } else if (activeTab === 'saisie') {
+          await renderSaisieEntiteTab(host, province, activeSeance);
+        } else if (activeTab === 'depenses') {
+          await renderDepensesGeneralesTab(host, activeSeance);
+        } else {
+          await renderRapportTab(host, province, activeSeance);
+        }
+      } catch (tabErr) {
+        console.error('[EMM Dépouillement onglet]', tabErr);
+        host.innerHTML = `
+          <div class="card" style="border-left:4px solid #b45309;">
+            <h3 style="margin:0 0 6px;color:#92400e;">Option temporairement indisponible</h3>
+            <p style="margin:0 0 10px;font-size:0.82rem;color:var(--text-muted);">
+              Une donnée de cet onglet est incomplète. Tu peux revenir sur <strong>Séance & Entités</strong>.
+            </p>
+            <button type="button" id="btn-fallback-seance" class="btn-primary">📅 Retour à Séance & Entités</button>
+          </div>
+        `;
+        host.querySelector('#btn-fallback-seance')?.addEventListener('click', async () => {
+          activeTab = 'seance';
+          await render();
+        });
+      }
+    } catch (err) {
+      console.error('[EMM Dépouillement]', err);
+      container.innerHTML = `
+        <div class="card">
+          <h3>🧾 Dépouillement</h3>
+          <p style="color:var(--text-muted);">Impossible de charger les données pour le moment. Réessaie dans un instant.</p>
+        </div>
+      `;
     }
   };
 
@@ -492,7 +531,7 @@ export async function renderDepouillementView(container) {
       </div>
 
       ${
-        activeSeance
+        activeSeance && currentSummary
           ? `
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
@@ -554,6 +593,652 @@ export async function renderDepouillementView(container) {
                                 ${formatFc(resume.transportFc)}<br>
                                 ${formatUsd(resume.transportUsd)}
                               </td>
+                              <td style="font-size:0.78rem;">
+                                <strong style="color:#0a6e2c;">${formatFc(resume.soldeFc)}</strong><br>
+                                <strong style="color:#0a6e2c;">${formatUsd(resume.soldeUsd)}</strong>
+                              </td>
+                              <td>
+                                <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                                  <button type="button" class="btn-primary btn-open-entite" data-id="${escapeHtml(entite.id)}" style="padding:5px 8px;font-size:0.75rem;">
+                                    ✍️ Saisir
+                                  </button>
+                                  <button type="button" class="btn-icon btn-del-entite" data-id="${escapeHtml(entite.id)}" title="Retirer l'entité">🗑️</button>
+                                </div>
+                              </td>
+                            </tr>
+                          `;
+                          })
+                          .join('')
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+              <button type="button" id="btn-archive-seance" class="btn-secondary">🗂️ Archiver la séance</button>
+            </div>
+          </div>
+        `
+          : ''
+      }
+    `;
+
+    host.querySelector('#form-new-seance')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const mois = f['s-mois'].value.trim();
+      const annee = Number(f['s-annee'].value) || currentYear;
+      const phase = f['s-phase'].value.trim();
+      const date = f['s-date'].value;
+      const responsable = f['s-responsable'].value.trim();
+
+      if (!mois || !phase || !date || !responsable) {
+        notifyUser('Veuillez renseigner tous les champs de la séance.', 'error');
+        return;
+      }
+
+      const created = await persistSeance({
+        province,
+        mois,
+        annee,
+        phase,
+        date,
+        responsable,
+        statut: 'Ouverte',
+        entites: [],
+        depensesGenerales: [],
+        createdAt: new Date().toISOString()
+      });
+
+      selectedSeanceId = created.id;
+      selectedEntiteId = '';
+      notifyUser('Séance de dépouillement créée.', 'success');
+      await render();
+    });
+
+    host.querySelector('#select-seance-courante')?.addEventListener('change', async (e) => {
+      selectedSeanceId = e.target.value;
+      selectedEntiteId = '';
+      await render();
+    });
+
+    host.querySelector('#form-add-entite-seance')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!activeSeance) return;
+      const typeEntite = host.querySelector('#new-ent-type')?.value || TYPES_ENTITE_OFFRANDES[0];
+      const nomEntite = (host.querySelector('#new-ent-nom')?.value || '').trim();
+      if (!nomEntite) {
+        notifyUser("Veuillez indiquer le nom de l'entité.", 'error');
+        return;
+      }
+
+      const newEnt = createEmptyEntiteEntry(typeEntite, nomEntite);
+      const updatedSeance = {
+        ...activeSeance,
+        entites: [...(activeSeance.entites || []), newEnt]
+      };
+      await persistSeance(updatedSeance);
+      selectedEntiteId = newEnt.id;
+      notifyUser('Entité ajoutée à la séance.', 'success');
+      activeTab = 'saisie';
+      await render();
+    });
+
+    host.querySelectorAll('.btn-open-entite').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        selectedEntiteId = btn.dataset.id;
+        activeTab = 'saisie';
+        await render();
+      });
+    });
+
+    host.querySelectorAll('.btn-del-entite').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!activeSeance) return;
+        if (!window.confirm('Retirer cette entité de la séance ?')) return;
+        const nextEntites = (activeSeance.entites || []).filter((e) => e.id !== btn.dataset.id);
+        await persistSeance({ ...activeSeance, entites: nextEntites });
+        if (selectedEntiteId === btn.dataset.id) selectedEntiteId = '';
+        notifyUser('Entité retirée.', 'info');
+        await render();
+      });
+    });
+
+    host.querySelector('#btn-archive-seance')?.addEventListener('click', async () => {
+      if (!activeSeance) return;
+      if (!window.confirm('Archiver cette séance de dépouillement ?')) return;
+      await archiveSeance(activeSeance);
+      selectedSeanceId = '';
+      selectedEntiteId = '';
+      notifyUser('Séance archivée.', 'info');
+      await render();
+    });
+  }
+
+  async function renderSaisieEntiteTab(host, province, activeSeance) {
+    if (!activeSeance || !Array.isArray(activeSeance.entites) || activeSeance.entites.length === 0) {
+      host.innerHTML = `
+        <div class="card" style="text-align:center;">
+          <p style="margin:0 0 10px;color:var(--text-muted);">
+            Ouvrez d'abord une séance et ajoutez au moins une entité pour commencer le comptage.
+          </p>
+          <button type="button" id="btn-go-seance" class="btn-primary">📅 Aller à Séance & Entités</button>
+        </div>
+      `;
+      host.querySelector('#btn-go-seance')?.addEventListener('click', async () => {
+        activeTab = 'seance';
+        await render();
+      });
+      return;
+    }
+
+    const currentEntite =
+      activeSeance.entites.find((e) => e.id === selectedEntiteId) || activeSeance.entites[0];
+    selectedEntiteId = currentEntite.id;
+
+    const resume = computeEntiteSummary(currentEntite);
+
+    const entiteSelectorHtml = activeSeance.entites
+      .map(
+        (e) =>
+          `<option value="${escapeHtml(e.id)}" ${
+            e.id === currentEntite.id ? 'selected' : ''
+          }>${escapeHtml(`${e.typeEntite || ''} — ${e.nomEntite || ''}`)}</option>`
+      )
+      .join('');
+
+    const rubTabsHtml = RUBRIQUES_NOMINATIVES.map((rub) => {
+      const rSum = resume.rubriquesResume[rub] || { count: 0, fc: 0, usd: 0 };
+      const isAct = rub === activeRubriqueNom;
+      return `
+        <button
+          type="button"
+          class="tab-btn ${isAct ? 'active' : ''}"
+          data-rub-tab="${escapeHtml(rub)}"
+          style="font-size:0.76rem;padding:6px 10px;"
+        >
+          ${escapeHtml(rub)} (${rSum.count})
+        </button>
+      `;
+    }).join('');
+
+    const currentRubList = Array.isArray(currentEntite.nominatifsParRubrique?.[activeRubriqueNom])
+      ? currentEntite.nominatifsParRubrique[activeRubriqueNom]
+      : [];
+
+    const currentRubResume = resume.rubriquesResume[activeRubriqueNom] || { fc: 0, usd: 0 };
+
+    host.innerHTML = `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+          <h3 style="margin:0;">Comptage Entité — ${escapeHtml(activeSeance.mois || '')} ${escapeHtml(activeSeance.annee || '')}</h3>
+          <select id="select-entite-saisie" aria-label="Choisir l'entité" style="max-width:260px;">
+            ${entiteSelectorHtml}
+          </select>
+        </div>
+
+        <form id="form-entite-bases" class="form-stack">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;">
+            <div class="form-group">
+              <label for="ent-env">1. Nombre d'enveloppes</label>
+              <input id="ent-env" type="number" min="0" value="${resume.enveloppes}" />
+            </div>
+            <div class="form-group">
+              <label for="ent-constr-fc">2. Construction (FC)</label>
+              <input id="ent-constr-fc" type="number" min="0" step="1" value="${resume.constrFc}" />
+            </div>
+            <div class="form-group">
+              <label for="ent-constr-usd">2. Construction (USD)</label>
+              <input id="ent-constr-usd" type="number" min="0" step="0.01" value="${resume.constrUsd}" />
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;">
+            <div class="form-group">
+              <label for="ent-norm-fc">3. Offrandes Normales (FC)</label>
+              <input id="ent-norm-fc" type="number" min="0" step="1" value="${resume.normFc}" />
+            </div>
+            <div class="form-group">
+              <label for="ent-norm-usd">3. Offrandes Normales (USD)</label>
+              <input id="ent-norm-usd" type="number" min="0" step="0.01" value="${resume.normUsd}" />
+            </div>
+          </div>
+
+          <div style="padding:8px 12px;border-radius:8px;background:#f0fdf4;border:1px solid #bbf7d0;font-size:0.8rem;color:#14532d;">
+            <strong>4. Sous-total (Construction + Normales) :</strong><br>
+            Francs : <strong>${formatFc(resume.sousTotalCnFc)}</strong><br>
+            Dollars : <strong>${formatUsd(resume.sousTotalCnUsd)}</strong>
+          </div>
+
+          <button type="submit" class="btn-secondary">💾 Enregistrer Enveloppes, Construction & Normales</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 8px;">5. Offrandes Nominatives par Rubrique</h3>
+        <div class="tabs-bar" style="flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+          ${rubTabsHtml}
+        </div>
+
+        <form id="form-add-nominatif" class="form-stack" style="margin-bottom:10px;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;">
+            <div class="form-group">
+              <label for="nom-donateur">Nom du donateur (${escapeHtml(activeRubriqueNom)})</label>
+              <input id="nom-donateur" type="text" required placeholder="Nom complet" />
+            </div>
+            <div class="form-group">
+              <label for="nom-montant">Montant</label>
+              <input id="nom-montant" type="number" min="0.01" step="0.01" required placeholder="0" />
+            </div>
+            <div class="form-group">
+              <label for="nom-devise">Devise</label>
+              <select id="nom-devise">
+                <option value="FC">FC (Francs)</option>
+                <option value="USD">USD ($)</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="btn-primary">➕ Ajouter à ${escapeHtml(activeRubriqueNom)}</button>
+        </form>
+
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Donateur</th>
+                <th>Montant</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                currentRubList.length === 0
+                  ? `<tr><td colspan="3" style="text-align:center;color:var(--text-muted);">Aucune offrande nominative pour ${escapeHtml(activeRubriqueNom)}.</td></tr>`
+                  : currentRubList
+                      .map(
+                        (item, idx) => `
+                        <tr>
+                          <td><strong>${escapeHtml(item.donateur || '')}</strong></td>
+                          <td>
+                            ${
+                              item.devise === 'USD'
+                                ? `<strong>${formatUsd(item.montant)}</strong>`
+                                : `<strong>${formatFc(item.montant)}</strong>`
+                            }
+                          </td>
+                          <td>
+                            <button type="button" class="btn-icon btn-del-nom" data-idx="${idx}" title="Supprimer">🗑️</button>
+                          </td>
+                        </tr>
+                      `
+                      )
+                      .join('')
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:#f8fafc;border:1px solid var(--border-color);font-size:0.8rem;">
+          <strong>Sous-total ${escapeHtml(activeRubriqueNom)} :</strong><br>
+          Francs : <strong>${formatFc(currentRubResume.fc)}</strong><br>
+          Dollars : <strong>${formatUsd(currentRubResume.usd)}</strong>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 8px;">6 à 8. Total des Sous-totaux, Transport & Solde de l'Entité</h3>
+        <div style="font-size:0.82rem;margin-bottom:10px;">
+          <strong>6. Total des sous-totaux :</strong><br>
+          Francs : <strong>${formatFc(resume.totalSousTotauxFc)}</strong><br>
+          Dollars : <strong>${formatUsd(resume.totalSousTotauxUsd)}</strong>
+        </div>
+
+        <form id="form-entite-transport" class="form-stack">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;">
+            <div class="form-group">
+              <label for="ent-trans-fc">7. Dépense de transport (FC)</label>
+              <input id="ent-trans-fc" type="number" min="0" step="1" value="${resume.transportFc}" />
+            </div>
+            <div class="form-group">
+              <label for="ent-trans-usd">7. Dépense de transport (USD)</label>
+              <input id="ent-trans-usd" type="number" min="0" step="0.01" value="${resume.transportUsd}" />
+            </div>
+          </div>
+          <button type="submit" class="btn-secondary">💾 Enregistrer la dépense de transport</button>
+        </form>
+
+        <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:#ecfdf5;border:1px solid #a7f3d0;font-size:0.84rem;color:#065f46;">
+          <strong>8. Solde de l'entité (Total sous-totaux − Transport) :</strong><br>
+          Solde en francs : <strong>${formatFc(resume.soldeFc)}</strong><br>
+          Solde en dollars : <strong>${formatUsd(resume.soldeUsd)}</strong>
+        </div>
+      </div>
+    `;
+
+    host.querySelector('#select-entite-saisie')?.addEventListener('change', async (e) => {
+      selectedEntiteId = e.target.value;
+      await render();
+    });
+
+    host.querySelectorAll('[data-rub-tab]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        activeRubriqueNom = btn.dataset.rubTab;
+        await render();
+      });
+    });
+
+    host.querySelector('#form-entite-bases')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const enveloppes = Math.max(0, Number(host.querySelector('#ent-env')?.value) || 0);
+      const constructionFc = Math.max(0, Number(host.querySelector('#ent-constr-fc')?.value) || 0);
+      const constructionUsd = Math.max(0, Number(host.querySelector('#ent-constr-usd')?.value) || 0);
+      const normalesFc = Math.max(0, Number(host.querySelector('#ent-norm-fc')?.value) || 0);
+      const normalesUsd = Math.max(0, Number(host.querySelector('#ent-norm-usd')?.value) || 0);
+
+      const updatedEntites = activeSeance.entites.map((ent) =>
+        ent.id === currentEntite.id
+          ? { ...ent, enveloppes, constructionFc, constructionUsd, normalesFc, normalesUsd }
+          : ent
+      );
+      await persistSeance({ ...activeSeance, entites: updatedEntites });
+      notifyUser('Enveloppes, construction et normales enregistrées.', 'success');
+      await render();
+    });
+
+    host.querySelector('#form-add-nominatif')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const donateur = (host.querySelector('#nom-donateur')?.value || '').trim();
+      const montant = Number(host.querySelector('#nom-montant')?.value) || 0;
+      const devise = host.querySelector('#nom-devise')?.value || 'FC';
+
+      if (!donateur || montant <= 0) {
+        notifyUser('Veuillez saisir le nom du donateur et un montant valide.', 'error');
+        return;
+      }
+
+      const updatedEntites = activeSeance.entites.map((ent) => {
+        if (ent.id !== currentEntite.id) return ent;
+        const mapRub = { ...(ent.nominatifsParRubrique || {}) };
+        const arr = Array.isArray(mapRub[activeRubriqueNom]) ? [...mapRub[activeRubriqueNom]] : [];
+        arr.push({
+          id: `nom_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+          donateur,
+          montant,
+          devise
+        });
+        mapRub[activeRubriqueNom] = arr;
+        return { ...ent, nominatifsParRubrique: mapRub };
+      });
+
+      await persistSeance({ ...activeSeance, entites: updatedEntites });
+      notifyUser(`Offrande ajoutée dans ${activeRubriqueNom}.`, 'success');
+      await render();
+    });
+
+    host.querySelectorAll('.btn-del-nom').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const idx = Number(btn.dataset.idx);
+        const updatedEntites = activeSeance.entites.map((ent) => {
+          if (ent.id !== currentEntite.id) return ent;
+          const mapRub = { ...(ent.nominatifsParRubrique || {}) };
+          const arr = Array.isArray(mapRub[activeRubriqueNom]) ? [...mapRub[activeRubriqueNom]] : [];
+          arr.splice(idx, 1);
+          mapRub[activeRubriqueNom] = arr;
+          return { ...ent, nominatifsParRubrique: mapRub };
+        });
+        await persistSeance({ ...activeSeance, entites: updatedEntites });
+        notifyUser('Ligne nominative supprimée.', 'info');
+        await render();
+      });
+    });
+
+    host.querySelector('#form-entite-transport')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const transportFc = Math.max(0, Number(host.querySelector('#ent-trans-fc')?.value) || 0);
+      const transportUsd = Math.max(0, Number(host.querySelector('#ent-trans-usd')?.value) || 0);
+
+      const updatedEntites = activeSeance.entites.map((ent) =>
+        ent.id === currentEntite.id ? { ...ent, transportFc, transportUsd } : ent
+      );
+      await persistSeance({ ...activeSeance, entites: updatedEntites });
+      notifyUser('Dépense de transport enregistrée.', 'success');
+      await render();
+    });
+  }
+
+  async function renderDepensesGeneralesTab(host, activeSeance) {
+    if (!activeSeance) {
+      host.innerHTML = `<div class="card"><p style="color:var(--text-muted);">Aucune séance active.</p></div>`;
+      return;
+    }
+
+    const summary = computeSeanceSummary(activeSeance);
+    const depenses = Array.isArray(activeSeance.depensesGenerales)
+      ? activeSeance.depensesGenerales
+      : [];
+
+    host.innerHTML = `
+      <div class="card">
+        <h3 style="margin:0 0 8px;">Total des Soldes des Entités & Dépenses Générales</h3>
+        <div style="font-size:0.82rem;margin-bottom:10px;">
+          <strong>Total des soldes des entités :</strong><br>
+          Francs : <strong>${formatFc(summary.totalSoldesEntitesFc)}</strong><br>
+          Dollars : <strong>${formatUsd(summary.totalSoldesEntitesUsd)}</strong>
+        </div>
+
+        <form id="form-add-dep-gen" class="form-stack">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;">
+            <div class="form-group">
+              <label for="dep-gen-motif">Motif de la dépense générale</label>
+              <input id="dep-gen-motif" type="text" required placeholder="Ex: Location salle / Fournitures" />
+            </div>
+            <div class="form-group">
+              <label for="dep-gen-montant">Montant</label>
+              <input id="dep-gen-montant" type="number" min="0.01" step="0.01" required placeholder="0" />
+            </div>
+            <div class="form-group">
+              <label for="dep-gen-devise">Devise</label>
+              <select id="dep-gen-devise">
+                <option value="FC">FC (Francs)</option>
+                <option value="USD">USD ($)</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="btn-primary">➕ Ajouter une dépense générale</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 8px;">Liste des Dépenses Générales (${depenses.length})</h3>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Motif</th>
+                <th>Montant</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                depenses.length === 0
+                  ? `<tr><td colspan="3" style="text-align:center;color:var(--text-muted);">Aucune dépense générale enregistrée.</td></tr>`
+                  : depenses
+                      .map(
+                        (d, idx) => `
+                        <tr>
+                          <td><strong>${escapeHtml(d.motif || '')}</strong></td>
+                          <td>
+                            ${
+                              d.devise === 'USD'
+                                ? `<strong>${formatUsd(d.montant)}</strong>`
+                                : `<strong>${formatFc(d.montant)}</strong>`
+                            }
+                          </td>
+                          <td>
+                            <button type="button" class="btn-icon btn-del-dep-gen" data-idx="${idx}" title="Supprimer">🗑️</button>
+                          </td>
+                        </tr>
+                      `
+                      )
+                      .join('')
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <div style="margin-top:12px;padding:10px 12px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;font-size:0.84rem;color:#92400e;">
+          <strong>Décaissement (Transport + Dépenses générales — sans conversion) :</strong><br>
+          Décaissement en francs : <strong>${formatFc(summary.totalDecaissementFc)}</strong><br>
+          Décaissement en dollars : <strong>${formatUsd(summary.totalDecaissementUsd)}</strong>
+        </div>
+
+        <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:#f0fdf4;border:1px solid #bbf7d0;font-size:0.86rem;color:#14532d;">
+          <strong>Solde à transférer à la banque (sans conversion) :</strong><br>
+          Banque en francs : <strong style="color:#0a6e2c;">${formatFc(summary.soldeBanqueFc)}</strong><br>
+          Banque en dollars : <strong style="color:#0a6e2c;">${formatUsd(summary.soldeBanqueUsd)}</strong>
+        </div>
+      </div>
+    `;
+
+    host.querySelector('#form-add-dep-gen')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const motif = (host.querySelector('#dep-gen-motif')?.value || '').trim();
+      const montant = Number(host.querySelector('#dep-gen-montant')?.value) || 0;
+      const devise = host.querySelector('#dep-gen-devise')?.value || 'FC';
+
+      if (!motif || montant <= 0) {
+        notifyUser('Veuillez saisir le motif et le montant de la dépense générale.', 'error');
+        return;
+      }
+
+      const nextDep = [
+        ...(activeSeance.depensesGenerales || []),
+        { id: `dgen_${Date.now()}`, motif, montant, devise }
+      ];
+      await persistSeance({ ...activeSeance, depensesGenerales: nextDep });
+      notifyUser('Dépense générale ajoutée.', 'success');
+      await render();
+    });
+
+    host.querySelectorAll('.btn-del-dep-gen').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const idx = Number(btn.dataset.idx);
+        const nextDep = [...(activeSeance.depensesGenerales || [])];
+        nextDep.splice(idx, 1);
+        await persistSeance({ ...activeSeance, depensesGenerales: nextDep });
+        notifyUser('Dépense générale supprimée.', 'info');
+        await render();
+      });
+    });
+  }
+
+  async function renderRapportTab(host, province, activeSeance) {
+    if (!activeSeance) {
+      host.innerHTML = `<div class="card"><p style="color:var(--text-muted);">Aucune séance à afficher dans le rapport.</p></div>`;
+      return;
+    }
+
+    const summary = computeSeanceSummary(activeSeance);
+    const depenses = Array.isArray(activeSeance.depensesGenerales)
+      ? activeSeance.depensesGenerales
+      : [];
+
+    const entitesBlocksHtml = summary.entitesCalculees
+      .map(({ entite, resume }) => {
+        const nomComplet = `${entite.typeEntite || ''} — ${entite.nomEntite || ''}`;
+        const rubDetails = RUBRIQUES_NOMINATIVES.map((rub) => {
+          const rInfo = resume.rubriquesResume[rub] || { count: 0, fc: 0, usd: 0 };
+          return `<li>${escapeHtml(rub)} (${rInfo.count}) : <strong>${formatFc(rInfo.fc)}</strong> • <strong>${formatUsd(rInfo.usd)}</strong></li>`;
+        }).join('');
+
+        return `
+          <div style="padding:10px;border:1px solid var(--border-color);border-radius:8px;margin-bottom:10px;background:#fff;">
+            <strong style="font-size:0.88rem;color:var(--green-main);">${escapeHtml(nomComplet)}</strong>
+            <div style="font-size:0.78rem;margin-top:4px;line-height:1.55;">
+              • Enveloppes : <strong>${formatNum(resume.enveloppes)}</strong><br>
+              • Offrandes de construction : <strong>${formatFc(resume.constrFc)}</strong> • <strong>${formatUsd(resume.constrUsd)}</strong><br>
+              • Offrandes normales : <strong>${formatFc(resume.normFc)}</strong> • <strong>${formatUsd(resume.normUsd)}</strong><br>
+              • <strong>Sous-total (Construction + Normales) :</strong> <strong>${formatFc(resume.sousTotalCnFc)}</strong> • <strong>${formatUsd(resume.sousTotalCnUsd)}</strong>
+            </div>
+            <ul style="margin:6px 0;padding-left:18px;font-size:0.76rem;">
+              ${rubDetails}
+            </ul>
+            <div style="font-size:0.78rem;line-height:1.55;border-top:1px dashed var(--border-color);padding-top:6px;">
+              • <strong>Total des sous-totaux :</strong> <strong>${formatFc(resume.totalSousTotauxFc)}</strong> • <strong>${formatUsd(resume.totalSousTotauxUsd)}</strong><br>
+              • Dépense de transport : <strong style="color:#b45309;">${formatFc(resume.transportFc)}</strong> • <strong style="color:#b45309;">${formatUsd(resume.transportUsd)}</strong><br>
+              • <strong>Solde de l'entité :</strong> <strong style="color:#0a6e2c;">${formatFc(resume.soldeFc)}</strong> • <strong style="color:#0a6e2c;">${formatUsd(resume.soldeUsd)}</strong>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+
+    const depensesRowsHtml =
+      depenses.length === 0
+        ? `<tr><td colspan="2" style="text-align:center;color:var(--text-muted);">Aucune dépense générale enregistrée.</td></tr>`
+        : depenses
+            .map(
+              (d) => `
+              <tr>
+                <td><strong>${escapeHtml(d.motif || '')}</strong></td>
+                <td>${d.devise === 'USD' ? `<strong>${formatUsd(d.montant)}</strong>` : `<strong>${formatFc(d.montant)}</strong>`}</td>
+              </tr>
+            `
+            )
+            .join('');
+
+    host.innerHTML = `
+      <div class="card">
+        <h3 style="margin:0 0 6px;">Rapport de Dépouillement — ${escapeHtml(activeSeance.mois || '')} ${escapeHtml(activeSeance.annee || '')}</h3>
+        <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:12px;">
+          Province : <strong>${escapeHtml(province)}</strong> •
+          Phase : <strong>${escapeHtml(activeSeance.phase || '')}</strong> •
+          Date : <strong>${escapeHtml(activeSeance.date || '')}</strong> •
+          Responsable : <strong>${escapeHtml(activeSeance.responsable || '—')}</strong>
+        </div>
+
+        ${entitesBlocksHtml || '<p style="color:var(--text-muted);">Aucune entité saisie.</p>'}
+
+        <div style="padding:10px 12px;border-radius:8px;background:#f8fafc;border:1px solid var(--border-color);font-size:0.84rem;margin-bottom:12px;">
+          <strong>Total des soldes des entités :</strong><br>
+          Francs : <strong>${formatFc(summary.totalSoldesEntitesFc)}</strong><br>
+          Dollars : <strong>${formatUsd(summary.totalSoldesEntitesUsd)}</strong>
+        </div>
+
+        <h4 style="margin:0 0 8px;">Dépenses Générales (Motif & Montant)</h4>
+        <div class="table-responsive" style="margin-bottom:10px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Motif</th>
+                <th>Montant</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${depensesRowsHtml}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="padding:10px 12px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;font-size:0.84rem;color:#92400e;margin-bottom:12px;">
+          <strong>Décaissement (Transport + Dépenses générales — sans conversion) :</strong><br>
+          Décaissement en francs : <strong>${formatFc(summary.totalDecaissementFc)}</strong><br>
+          Décaissement en dollars : <strong>${formatUsd(summary.totalDecaissementUsd)}</strong>
+        </div>
+
+        <div style="padding:12px;border-radius:8px;background:#ecfdf5;border:1px solid #a7f3d0;font-size:0.88rem;color:#065f46;">
+          <strong>Solde à transférer à la banque (sans conversion) :</strong><br>
+          Banque en francs : <strong>${formatFc(summary.soldeBanqueFc)}</strong><br>
+          Banque en dollars : <strong>${formatUsd(summary.soldeBanqueUsd)}</strong>
+        </div>
+      </div>
+    `;
+  }
+
+  await render();
+}
+td>
                               <td style="font-size:0.78rem;">
                                 <strong style="color:#0a6e2c;">${formatFc(resume.soldeFc)}</strong><br>
                                 <strong style="color:#0a6e2c;">${formatUsd(resume.soldeUsd)}</strong>
