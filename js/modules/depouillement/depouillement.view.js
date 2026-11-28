@@ -257,11 +257,9 @@ function computeSeanceSummary(seance) {
     }
   });
 
-  // Décaissement = dépenses de transport + dépenses générales (sans conversion)
   const totalDecaissementFc = totalTransportFc + totalDepGenFc;
   const totalDecaissementUsd = totalTransportUsd + totalDepGenUsd;
 
-  // Solde à transférer à la banque = Total des soldes des entités - Total des dépenses générales (sans conversion)
   const soldeBanqueFc = totalSoldesEntitesFc - totalDepGenFc;
   const soldeBanqueUsd = totalSoldesEntitesUsd - totalDepGenUsd;
 
@@ -450,7 +448,6 @@ export async function renderDepouillementView(container) {
       const allSeances = await loadSeances();
       const seances = allSeances.filter((s) => !s.province || s.province === province);
 
-      // Nettoyer les IDs cochés qui n'existent plus
       const validIds = new Set(seances.map((s) => String(s.id)));
       selectedForDeleteIds = new Set(
         Array.from(selectedForDeleteIds).filter((id) => validIds.has(String(id)))
@@ -766,7 +763,8 @@ export async function renderDepouillementView(container) {
                                 ${formatUsd(resume.totalSousTotauxUsd)}
                               </td>
                               <td style="font-size:0.78rem;color:#b45309;">
-                                ${formatFc(resume.transportFc)}<br>${formatUsd(resume.transportUsd)}
+                                ${formatFc(resume.transportFc)}<br>
+                                ${formatUsd(resume.transportUsd)}
                               </td>
                               <td style="font-size:0.78rem;">
                                 <strong style="color:#0a6e2c;">${formatFc(resume.soldeFc)}</strong><br>
@@ -1053,7 +1051,7 @@ export async function renderDepouillementView(container) {
     host.innerHTML = `
       <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-          <h3 style="margin:0;color:#0f172a;">Comptage Entité — ${escapeHtml(activeSeance.mois || '')}${escapeHtml(activeSeance.annee || '')}</h3>
+          <h3 style="margin:0;color:#0f172a;">Comptage Entité — ${escapeHtml(activeSeance.mois || '')} ${escapeHtml(activeSeance.annee || '')}</h3>
           <select id="select-entite-saisie" aria-label="Choisir l'entité" style="max-width:260px;background:#ffffff;color:#0f172a;border:1px solid #94a3b8;">
             ${entiteSelectorHtml}
           </select>
@@ -1428,14 +1426,13 @@ export async function renderDepouillementView(container) {
 
     const entitesBlocksHtml = summary.entitesCalculees
       .map(({ entite, resume }, index) => {
-        const nomComplet = `${index + 1}. ${entite.typeEntite || ''} —${entite.nomEntite || ''}`;
+        const nomComplet = `${index + 1}. ${entite.typeEntite || ''} — ${entite.nomEntite || ''}`;
 
         const hasConstr = resume.constrFc > 0 || resume.constrUsd > 0;
         const hasNorm = resume.normFc > 0 || resume.normUsd > 0;
         const hasSousTotalCn = resume.sousTotalCnFc > 0 || resume.sousTotalCnUsd > 0;
         const hasTransport = resume.transportFc > 0 || resume.transportUsd > 0;
 
-        // Afficher uniquement les rubriques nominatives qui ont au moins une offrande enregistrée
         const rubriquesEnregistreesHtml = RUBRIQUES_NOMINATIVES.filter((rub) => {
           const rInfo = resume.rubriquesResume[rub];
           return rInfo && Array.isArray(rInfo.items) && rInfo.items.length > 0;
@@ -1489,4 +1486,83 @@ export async function renderDepouillementView(container) {
                 : ''
             }
 
-            <div style="font-size:0.78rem;line-height:1.55;border-top:1px solid #cbd5e1;padding-top:6px;margin-top:6px;color:#
+            <div style="font-size:0.78rem;line-height:1.55;border-top:1px solid #cbd5e1;padding-top:6px;margin-top:6px;color:#0f172a;">
+              • <strong>Total des sous-totaux :</strong> <strong>${formatFc(resume.totalSousTotauxFc)}</strong> • <strong>${formatUsd(resume.totalSousTotauxUsd)}</strong><br>
+              ${hasTransport ? `• Dépense de transport : <strong style="color:#b45309;">${formatFc(resume.transportFc)}</strong> • <strong style="color:#b45309;">${formatUsd(resume.transportUsd)}</strong><br>` : ''}
+              • <strong>Solde de l'entité :</strong> <strong style="color:#0a6e2c;">${formatFc(resume.soldeFc)}</strong> • <strong style="color:#0a6e2c;">${formatUsd(resume.soldeUsd)}</strong>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+
+    const depensesRowsHtml =
+      depenses.length === 0
+        ? `<tr><td colspan="2" style="text-align:center;color:#475569;">Aucune dépense générale enregistrée.</td></tr>`
+        : depenses
+            .map(
+              (d) => `
+              <tr style="background:#ffffff;color:#0f172a;">
+                <td><strong>${escapeHtml(d.motif || '')}</strong></td>
+                <td>${d.devise === 'USD' ? `<strong>${formatUsd(d.montant)}</strong>` : `<strong>${formatFc(d.montant)}</strong>`}</td>
+              </tr>
+            `
+            )
+            .join('');
+
+    host.innerHTML = `
+      <div class="card" style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;">
+        <h3 style="margin:0 0 6px;color:#0f172a;">Rapport Complet — ${escapeHtml(activeSeance.mois || '')} ${escapeHtml(activeSeance.annee || '')}</h3>
+        <div style="font-size:0.8rem;color:#334155;margin-bottom:12px;">
+          Province : <strong>${escapeHtml(province)}</strong> •
+          Phase : <strong>${escapeHtml(activeSeance.phase || '')}</strong> •
+          Date : <strong>${escapeHtml(activeSeance.date || '')}</strong> •
+          Responsable : <strong>${escapeHtml(activeSeance.responsable || '—')}</strong> •
+          Statut : <strong>${escapeHtml(activeSeance.statut || 'Ouverte')}</strong>
+        </div>
+
+        ${entitesBlocksHtml || '<p style="color:#475569;">Aucune entité saisie dans cette séance.</p>'}
+
+        <div style="padding:10px 12px;border-radius:8px;background:#f8fafc;border:1px solid #cbd5e1;font-size:0.84rem;color:#0f172a;margin-bottom:12px;">
+          <strong>Total des soldes des entités :</strong><br>
+          Francs : <strong>${formatFc(summary.totalSoldesEntitesFc)}</strong><br>
+          Dollars : <strong>${formatUsd(summary.totalSoldesEntitesUsd)}</strong>
+        </div>
+
+        <h4 style="margin:0 0 8px;color:#0f172a;">Dépenses Générales (Motif & Montant)</h4>
+        <div class="table-responsive" style="margin-bottom:10px;">
+          <table>
+            <thead>
+              <tr>
+                <th style="color:#0f172a;">Motif</th>
+                <th style="color:#0f172a;">Montant</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${depensesRowsHtml}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="padding:10px 12px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;font-size:0.84rem;color:#0f172a;margin-bottom:12px;">
+          <strong>Décaissement (Transport + Dépenses générales — sans conversion) :</strong><br>
+          Décaissement en francs : <strong>${formatFc(summary.totalDecaissementFc)}</strong><br>
+          Décaissement en dollars : <strong>${formatUsd(summary.totalDecaissementUsd)}</strong>
+        </div>
+
+        <div style="padding:12px;border-radius:8px;background:#ecfdf5;border:1px solid #86efac;font-size:0.88rem;color:#0f172a;">
+          <strong>Solde à transférer à la banque (sans conversion) :</strong><br>
+          Banque en francs : <strong style="color:#0a6e2c;">${formatFc(summary.soldeBanqueFc)}</strong><br>
+          Banque en dollars : <strong style="color:#0a6e2c;">${formatUsd(summary.soldeBanqueUsd)}</strong>
+        </div>
+      </div>
+    `;
+  }
+
+  await render();
+}
+
+export const renderDepouillement = renderDepouillementView;
+export const render = renderDepouillementView;
+export const mount = renderDepouillementView;
+export default renderDepouillementView;
